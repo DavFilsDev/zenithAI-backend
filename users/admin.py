@@ -1,6 +1,5 @@
-from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from .models import User, UserProfile
+from .models import User
 
 class CustomUserAdmin(UserAdmin):
     list_display = ('email', 'username', 'is_staff', 'is_active')
@@ -19,10 +18,3 @@ class CustomUserAdmin(UserAdmin):
     )
     search_fields = ('email', 'username')
     ordering = ('email',)
-
-@admin.register(UserProfile)
-class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'theme', 'language', 'created_at')
-    list_filter = ('theme', 'language')
-    search_fields = ('user__email', 'user__username')
-    readonly_fields = ('created_at', 'updated_at')

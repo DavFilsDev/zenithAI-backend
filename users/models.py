@@ -9,10 +9,3 @@ class User(AbstractUser):
     
     def __str__(self):
         return self.email
-
-class UserProfile(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
-    theme = models.CharField(max_length=20, default='light')
-    language = models.CharField(max_length=10, default='en')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
