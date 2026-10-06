@@ -32,3 +32,16 @@ class UserPayloadTests(APITestCase):
         self.assertNotIn('credits', response.data)
         self.assertNotIn('is_premium', response.data)
         self.assertIn('email', response.data)
+
+    def test_api_key_never_appears_in_responses(self):
+        self.client.force_authenticate(self.user)
+        profile = self.client.get(reverse('profile'))
+        self.assertEqual(profile.status_code, status.HTTP_200_OK)
+        self.assertNotIn('api_key', profile.data)
+
+        token = self.client.post(
+            reverse('token_obtain_pair'),
+            {'email': self.user.email, 'password': self.password},
+        )
+        self.assertEqual(token.status_code, status.HTTP_200_OK)
+        self.assertNotIn('api_key', token.data)
