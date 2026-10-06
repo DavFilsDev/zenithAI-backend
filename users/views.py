@@ -33,7 +33,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['user_id'] = self.user.id
         data['email'] = self.user.email
         data['username'] = self.user.username
-        data['credits'] = self.user.credits
         data['is_premium'] = self.user.is_premium
         return data
 
@@ -56,8 +55,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 class RegisterView(generics.CreateAPIView):
     """
     Register a new user account.
-    
-    Creates a new user with default credits (10) and non-premium status.
+
     Returns the created user data upon success.
     """
     queryset = User.objects.all()
@@ -131,7 +129,6 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
                     'id': 1,
                     'email': 'user@example.com',
                     'username': 'johndoe',
-                    'credits': 10,
                     'is_premium': False
                 },
                 response_only=True,
