@@ -33,7 +33,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         data['user_id'] = self.user.id
         data['email'] = self.user.email
         data['username'] = self.user.username
-        data['is_premium'] = self.user.is_premium
         return data
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -128,8 +127,7 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
                 value={
                     'id': 1,
                     'email': 'user@example.com',
-                    'username': 'johndoe',
-                    'is_premium': False
+                    'username': 'johndoe'
                 },
                 response_only=True,
             ),
