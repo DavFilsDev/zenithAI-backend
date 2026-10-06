@@ -74,12 +74,9 @@ The four default password validators apply, so a weak or common password is reje
   "refresh": "eyJ0eXAiOiJKV1Qi...",
   "user_id": 1,
   "email": "user@example.com",
-  "username": "username",
-  "is_premium": false
+  "username": "username"
 }
 ```
-
-`is_premium` is a cosmetic leftover with no effect on access; it is removed later in phase P0.
 
 ### Refresh tokens
 
@@ -108,8 +105,7 @@ The four default password validators apply, so a weak or common password is reje
 {
   "id": 1,
   "email": "user@example.com",
-  "username": "username",
-  "is_premium": false
+  "username": "username"
 }
 ```
 

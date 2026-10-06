@@ -4,8 +4,7 @@ from django.db import models
 class User(AbstractUser):
     email = models.EmailField(unique=True)
     api_key = models.CharField(max_length=255, blank=True, null=True)
-    is_premium = models.BooleanField(default=False)
-    
+
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']
     
