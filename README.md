@@ -137,7 +137,7 @@ Implemented today:
 
 Planned, in the order of the roadmap:
 
-- Removal of `credits`, `is_premium`, the per-user API key and the dead token counter
+- Removal of `is_premium`, the per-user API key and the dead token counter
 - Shorter access tokens, working refresh blacklisting, logout
 - UUID identifiers, then the `/api/v1/` base path, message sub-resource, pagination, health check and a shared error envelope
 - A provider interface with a second free provider, SSE streaming, throttling and a global daily cap
