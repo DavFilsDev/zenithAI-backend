@@ -169,7 +169,7 @@ Effort: **S** under half a day, **M** one to three days, **L** more than three d
 
 ### P0 — Security and model cleanup
 
-- [ ] **P0.1** Remove `User.credits` from the model, the serializers, the admin and the token response. — *S* — `GET /auth/profile/`, `POST /auth/token/` and the OpenAPI schema contain no `credits`; the frontend profile modal no longer renders a credit counter; the Django admin has no credits column. — Depends on: frontend change, same release.
+- [x] **P0.1** Remove `User.credits` from the model, the serializers, the admin and the token response. — *S* — `GET /auth/profile/`, `POST /auth/token/` and the OpenAPI schema contain no `credits`; the frontend profile modal no longer renders a credit counter; the Django admin has no credits column. — Depends on: frontend change, same release.
 - [ ] **P0.2** Remove `User.is_premium` everywhere. — *S* — no occurrence of `is_premium` remains in the backend, the schema is clean, the admin no longer offers a premium field. — Depends on: nothing.
 - [ ] **P0.3** Remove `User.api_key`. — *S* — the column is dropped, no per-user key exists anywhere, the schema exposes no key field. — Depends on: nothing.
 - [ ] **P0.4** Delete the `UserProfile` model and its admin registration. — *S* — the table is dropped by a migration, `users/models.py` only holds `User`. — Depends on: nothing.
