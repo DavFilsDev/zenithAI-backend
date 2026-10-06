@@ -25,12 +25,14 @@ class UserPayloadTests(APITestCase):
         self.assertNotIn('is_premium', response.data)
         self.assertIn('username', response.data)
 
-    def test_profile_response_has_no_billing_state(self):
+    def test_profile_response_contains_only_user_fields(self):
         self.client.force_authenticate(self.user)
         response = self.client.get(reverse('profile'))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertNotIn('credits', response.data)
         self.assertNotIn('is_premium', response.data)
+        self.assertNotIn('theme', response.data)
+        self.assertNotIn('language', response.data)
         self.assertIn('email', response.data)
 
     def test_api_key_never_appears_in_responses(self):
