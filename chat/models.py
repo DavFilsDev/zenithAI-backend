@@ -1,7 +1,10 @@
+import uuid
+
 from django.db import models
 from users.models import User
 
 class Conversation(models.Model):
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='conversations')
     title = models.CharField(max_length=200)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -19,7 +22,8 @@ class Message(models.Model):
         ('assistant', 'Assistant'),
         ('system', 'System'),
     ]
-    
+
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='messages')
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
     content = models.TextField()

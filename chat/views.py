@@ -38,7 +38,7 @@ class ConversationListView(generics.ListCreateAPIView):
                 'Successful Response',
                 value=[
                     {
-                        'id': 1,
+                        'uuid': '3f7a2c1e-8b4d-4f0e-9a2c-1e8b4d4f0e9a',
                         'title': 'My First Conversation',
                         'created_at': '2026-03-03T10:00:00Z',
                         'updated_at': '2026-03-03T10:00:00Z',
@@ -81,7 +81,7 @@ class ConversationListView(generics.ListCreateAPIView):
             OpenApiExample(
                 'Create Response',
                 value={
-                    'id': 1,
+                    'uuid': '3f7a2c1e-8b4d-4f0e-9a2c-1e8b4d4f0e9a',
                     'title': 'My New Conversation',
                     'created_at': '2026-03-03T10:00:00Z',
                     'updated_at': '2026-03-03T10:00:00Z',
@@ -97,6 +97,7 @@ class ConversationListView(generics.ListCreateAPIView):
 
 class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ConversationSerializer
+    lookup_field = 'uuid'
     permission_classes = (permissions.IsAuthenticated,)
     
     def get_queryset(self):
@@ -125,20 +126,20 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
             OpenApiExample(
                 'Successful Response',
                 value={
-                    'id': 1,
+                    'uuid': '3f7a2c1e-8b4d-4f0e-9a2c-1e8b4d4f0e9a',
                     'title': 'My First Conversation',
                     'created_at': '2026-03-03T10:00:00Z',
                     'updated_at': '2026-03-03T10:06:00Z',
                     'message_count': 2,
                     'messages': [
                         {
-                            'id': 1,
+                            'uuid': '5e4b3a2c-1d9f-4b8e-a3c5-6d7f8a9b0c1d',
                             'role': 'user',
                             'content': 'What is Django?',
                             'created_at': '2026-03-03T10:04:00Z'
                         },
                         {
-                            'id': 2,
+                            'uuid': 'a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
                             'role': 'assistant',
                             'content': 'Django is a Python web framework...',
                             'created_at': '2026-03-03T10:04:01Z'
@@ -247,9 +248,9 @@ class ChatView(APIView):
         parameters=[
             OpenApiParameter(
                 name='conversation_id',
-                type=OpenApiTypes.INT,
+                type=OpenApiTypes.UUID,
                 location=OpenApiParameter.PATH,
-                description='ID of existing conversation (optional). If not provided, creates new conversation.',
+                description='UUID of existing conversation (optional). If not provided, creates new conversation.',
                 required=False,
             ),
         ],
@@ -268,7 +269,7 @@ class ChatView(APIView):
                     OpenApiExample(
                         'Successful Response',
                         value={
-                            'id': 1,
+                            'uuid': 'a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
                             'role': 'assistant',
                             'content': 'The capital of France is Paris. It is known as the "City of Light" and is famous for the Eiffel Tower, Louvre Museum, and Notre-Dame Cathedral.',
                             'created_at': '2026-03-03T10:30:00Z'
@@ -335,7 +336,7 @@ class ChatView(APIView):
         
         if conversation_id:
             conversation = Conversation.objects.filter(
-                id=conversation_id, 
+                uuid=conversation_id, 
                 user=request.user
             ).first()
             if not conversation:
