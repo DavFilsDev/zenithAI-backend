@@ -1,4 +1,4 @@
-from rest_framework import generics, permissions, status
+from rest_framework import generics, permissions, status, exceptions
 from django.db.models import Count
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -275,7 +275,7 @@ class ChatView(APIView):
                 examples=[
                     OpenApiExample(
                         'Missing Message',
-                        value={'error': 'Message is required'}
+                        value={'error': {'code': 'validation_error', 'message': 'Message is required', 'details': {}}}
                     )
                 ]
             ),
@@ -287,7 +287,7 @@ class ChatView(APIView):
                 examples=[
                     OpenApiExample(
                         'Conversation Not Found',
-                        value={'error': 'Conversation not found'}
+                        value={'error': {'code': 'not_found', 'message': 'Conversation not found', 'details': {}}}
                     )
                 ]
             ),
@@ -296,7 +296,7 @@ class ChatView(APIView):
                 examples=[
                     OpenApiExample(
                         'Provider Unavailable',
-                        value={'error': {'code': 'llm_unavailable', 'message': 'The AI service is temporarily unavailable. Please try again later.'}}
+                        value={'error': {'code': 'llm_unavailable', 'message': 'The AI service is temporarily unavailable. Please try again later.', 'details': {}}}
                     )
                 ]
             ),
@@ -305,7 +305,7 @@ class ChatView(APIView):
                 examples=[
                     OpenApiExample(
                         'Server Error',
-                        value={'error': 'Failed to generate AI response. Please try again.'}
+                        value={'error': {'code': 'server_error', 'message': 'An unexpected error occurred.', 'details': {}}}
                     )
                 ]
             ),
@@ -330,7 +330,7 @@ class ChatView(APIView):
     def post(self, request, conversation_id=None):
         user_message = request.data.get('message')
         if not user_message:
-            return Response({'error': 'Message is required'}, status=status.HTTP_400_BAD_REQUEST)
+            raise exceptions.ValidationError('Message is required')
         
         if conversation_id:
             conversation = Conversation.objects.filter(
@@ -338,7 +338,7 @@ class ChatView(APIView):
                 user=request.user
             ).first()
             if not conversation:
-                return Response({'error': 'Conversation not found'}, status=status.HTTP_404_NOT_FOUND)
+                raise exceptions.NotFound('Conversation not found')
         else:
             # Create new conversation with first message as title
             title = user_message[:50] + "..." if len(user_message) > 50 else user_message
@@ -374,12 +374,9 @@ class ChatView(APIView):
 
         except LLMUnavailableError as e:
             return Response(
-                {'error': {'code': 'llm_unavailable', 'message': str(e)}},
+                {'error': {'code': 'llm_unavailable', 'message': str(e), 'details': {}}},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         except Exception as e:
             logger.error(f"Chat error for user {request.user.id}: {str(e)}")
-            return Response(
-                {'error': 'Failed to generate AI response. Please try again.'}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            raise

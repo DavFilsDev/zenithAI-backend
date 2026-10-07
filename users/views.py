@@ -85,8 +85,14 @@ class RegisterView(generics.CreateAPIView):
             400: OpenApiExample(
                 'Validation Error',
                 value={
-                    "email": ["user with this email already exists."],
-                    "password": ["Password fields didn't match."]
+                    "error": {
+                        "code": "validation_error",
+                        "message": "The request payload is invalid.",
+                        "details": {
+                            "email": ["user with this email already exists."],
+                            "password": ["Password fields didn't match."]
+                        }
+                    }
                 }
             ),
         },

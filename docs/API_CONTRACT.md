@@ -124,6 +124,7 @@ Every error response, without exception, uses this envelope:
 | `unauthorized` | 401 | Missing, invalid or expired token |
 | `forbidden` | 403 | Authenticated but not allowed |
 | `not_found` | 404 | Unknown resource, or not owned by the caller |
+| `method_not_allowed` | 405 | HTTP method not allowed on this endpoint |
 | `rate_limited` | 429 | Per-IP or per-user throttling |
 | `quota_exhausted` | 429 | Global daily cap reached |
 | `llm_unavailable` | 503 | Provider unreachable, errored or rate limited |

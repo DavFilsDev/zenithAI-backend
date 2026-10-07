@@ -44,12 +44,18 @@ Access tokens are valid for 15 minutes, refresh tokens for 7 days. Refresh token
 }
 ```
 
-`400 Bad Request`, Django REST Framework field errors:
+`400 Bad Request` uses the shared error envelope:
 
 ```json
 {
-  "email": ["A user with that email already exists."],
-  "password2": ["Password fields didn't match."]
+  "error": {
+    "code": "validation_error",
+    "message": "The request payload is invalid.",
+    "details": {
+      "email": ["A user with that email already exists."],
+      "password2": ["Password fields didn't match."]
+    }
+  }
 }
 ```
 
@@ -253,15 +259,16 @@ None of the following exists today. All of them are specified in [`docs/API_CONT
 
 ## Errors today
 
-Errors use the plain Django REST Framework shapes, not a shared envelope.
+Errors use the shared envelope `{"error": {"code", "message", "details"}}`, with the codes defined in the contract.
 
-| Case | Body |
-|---|---|
-| Validation error | Field map, for example `{"email": ["This field is required."]}` |
-| Missing or invalid token | `{"detail": "Authentication credentials were not provided."}` |
-| Unknown or unowned conversation | `{"error": "Conversation not found"}` |
-| Provider failure | `503` with `{"error": {"code": "llm_unavailable", "message": "The AI service is temporarily unavailable. Please try again later."}}` |
-| Unexpected server error | `{"error": "Failed to generate AI response. Please try again."}` |
+| Code | HTTP | Body example |
+|---|---|---|
+| `validation_error` | 400 | `{"error": {"code": "validation_error", "message": "Message is required", "details": {}}}`; details carries the field map when there is one |
+| `unauthorized` | 401 | `{"error": {"code": "unauthorized", "message": "Authentication credentials were not provided.", "details": {}}}` |
+| `not_found` | 404 | `{"error": {"code": "not_found", "message": "Conversation not found", "details": {}}}` |
+| `method_not_allowed` | 405 | `{"error": {"code": "method_not_allowed", "message": "Method \\"POST\\" not allowed.", "details": {}}}` |
+| `llm_unavailable` | 503 | `{"error": {"code": "llm_unavailable", "message": "The AI service is temporarily unavailable. Please try again later.", "details": {}}}` |
+| `server_error` | 500 | `{"error": {"code": "server_error", "message": "An unexpected error occurred.", "details": {}}}` |
 
 ## Trying it locally
 

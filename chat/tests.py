@@ -1,4 +1,4 @@
-from uuid import UUID
+from uuid import UUID, uuid4
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -138,3 +138,42 @@ class ProviderFailureTests(APITestCase):
         with override_settings(GEMINI_API_KEY=''):
             with self.assertRaises(LLMUnavailableError):
                 gemini_service.generate_response('Hello')
+
+
+class ErrorEnvelopeTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='env@example.com',
+            username='env-user',
+            password='Str0ng-Passw0rd!42',
+        )
+        self.conversation = Conversation.objects.create(user=self.user, title='Env chat')
+        self.client.force_authenticate(user=self.user)
+
+    def test_missing_message_returns_validation_error_envelope(self):
+        response = self.client.post('/api/chat/chat/', {})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['error']['code'], 'validation_error')
+        self.assertEqual(response.data['error']['message'], 'Message is required')
+        self.assertEqual(response.data['error']['details'], {})
+
+    def test_unknown_conversation_returns_not_found_envelope(self):
+        response = self.client.post(f'/api/chat/chat/{uuid4()}/', {'message': 'Hello'})
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data['error']['code'], 'not_found')
+        self.assertEqual(response.data['error']['message'], 'Conversation not found')
+
+    def test_post_to_conversation_detail_returns_method_not_allowed_envelope(self):
+        response = self.client.post(f'/api/chat/conversations/{self.conversation.uuid}/', {})
+        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.data['error']['code'], 'method_not_allowed')
+
+    @override_settings(DEBUG=False)
+    @patch(
+        'chat.views.gemini_service.generate_response',
+        side_effect=RuntimeError('boom'),
+    )
+    def test_unexpected_error_returns_server_error_envelope(self, mock_generate):
+        response = self.client.post('/api/chat/chat/', {'message': 'Hello'})
+        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.data['error']['code'], 'server_error')

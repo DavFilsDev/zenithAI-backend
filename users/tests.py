@@ -122,7 +122,8 @@ class EmailNormalizationTests(APITestCase):
             'password2': 'Str0ng-Passw0rd!42',
         })
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('email', response.data)
+        self.assertEqual(response.data['error']['code'], 'validation_error')
+        self.assertIn('email', response.data['error']['details'])
 
     def test_login_accepts_uppercase_email(self):
         self.password = 'Str0ng-Passw0rd!42'
@@ -149,3 +150,30 @@ class EmailNormalizationTests(APITestCase):
                 username='db-case-two',
                 password='Str0ng-Passw0rd!42',
             )
+
+
+class ErrorEnvelopeTests(APITestCase):
+    def setUp(self):
+        self.password = 'Str0ng-Passw0rd!42'
+        self.user = User.objects.create_user(
+            email='errors@example.com',
+            username='errors',
+            password=self.password,
+        )
+
+    def test_unauthenticated_request_returns_unauthorized_envelope(self):
+        response = self.client.get(reverse('profile'))
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.data['error']['code'], 'unauthorized')
+        self.assertIn('message', response.data['error'])
+        self.assertEqual(response.data['error']['details'], {})
+
+    def test_registration_returns_field_map_in_details(self):
+        response = self.client.post(reverse('register'), {
+            'username': 'noemail',
+            'password': self.password,
+            'password2': self.password,
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['error']['code'], 'validation_error')
+        self.assertIn('email', response.data['error']['details'])
