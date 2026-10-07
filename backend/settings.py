@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     # Local apps
     'users',
     'chat',
+    'health',
 ]
 
 MIDDLEWARE = [

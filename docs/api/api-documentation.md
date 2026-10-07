@@ -231,16 +231,27 @@ Status codes:
 |---|---|
 | `201 Created` | New conversation: `POST /api/chat/chat/` created it |
 | `200 OK` | Existing conversation |
-| `400 Bad Request` | `{"error": "Message is required"}` |
-| `404 Not Found` | `{"error": "Conversation not found"}`, unknown id or not yours |
-| `503 Service Unavailable` | Provider down: `{"error": {"code": "llm_unavailable", "message": "The AI service is temporarily unavailable. Please try again later."}}` |
-| `500 Internal Server Error` | `{"error": "Failed to generate AI response. Please try again."}` |
+| `400 Bad Request` | `validation_error`: `{"error": {"code": "validation_error", "message": "Message is required", "details": {}}}` |
+| `404 Not Found` | `not_found`, unknown id or not yours |
+| `503 Service Unavailable` | Provider down: `{"error": {"code": "llm_unavailable", "message": "The AI service is temporarily unavailable. Please try again later.", "details": {}}}` |
+| `500 Internal Server Error` | `server_error` envelope |
 
 A conversation created implicitly by the first message takes its title from the first 50 characters of the message.
 
 ### Provider failures return `503`
 
 The model call is Google Gemini, configured by `GEMINI_API_KEY` and `GEMINI_MODEL`. When the provider is unreachable, the key is invalid, the model is unknown or the free tier is rate limited, the request returns `503` with machine-readable `llm_unavailable`. Nothing is persisted as an assistant message: the write stops at the user message. The raw provider error is only logged and never sent to the client.
+
+### Health check
+
+`GET /api/v1/health/`, public, no authentication. Runs a `SELECT 1` against the database.
+
+| Status | Body |
+|---|---|
+| `200 OK` | `{"status": "ok", "database": "ok"}` |
+| `503 Service Unavailable` | `{"status": "error", "database": "unavailable"}` |
+
+The failure body stays a plain machine-readable probe result, not the API error envelope, because this endpoint is consumed by monitoring, not by API clients.
 
 ## Not available yet
 
@@ -252,7 +263,6 @@ None of the following exists today. All of them are specified in [`docs/API_CONT
 | Messages as a sub-resource | `GET,POST /api/v1/conversations/{uuid}/messages/` |
 | Server-sent event streaming | `POST /api/v1/conversations/{uuid}/messages/stream/` |
 | Paginated lists | `{count, next, previous, results}`, page size 20 |
-| Health check | `GET /api/v1/health/` |
 | Versioned base path | `/api/v1/` |
 | Shared error envelope | `{"error": {"code", "message", "details"}}` |
 | Per-IP and per-user throttling, global daily cap | `429` with `Retry-After` |
