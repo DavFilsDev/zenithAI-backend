@@ -11,8 +11,8 @@ class MessageSerializer(serializers.ModelSerializer):
     """
     class Meta:
         model = Message
-        fields = ('id', 'role', 'content', 'tokens', 'created_at')
-        read_only_fields = ('id', 'tokens', 'created_at')
+        fields = ('id', 'role', 'content', 'created_at')
+        read_only_fields = ('id', 'created_at')
         
     @extend_schema_field(
         {
