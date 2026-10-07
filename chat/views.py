@@ -1,11 +1,10 @@
-from rest_framework import generics, permissions, status
+from rest_framework import generics, permissions, status, exceptions
 from django.db.models import Count
 from rest_framework.response import Response
-from rest_framework.views import APIView
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, ConversationListSerializer, MessageSerializer
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
-from .services import gemini_service, LLMUnavailableError
+from .services import LLMUnavailableError, generate_assistant_reply
 import logging
 
 logger = logging.getLogger(__name__)
@@ -96,10 +95,11 @@ class ConversationListView(generics.ListCreateAPIView):
 class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ConversationSerializer
     lookup_field = 'uuid'
+    http_method_names = ('get', 'patch', 'delete', 'head', 'options')
     permission_classes = (permissions.IsAuthenticated,)
     
     def get_queryset(self):
-        return Conversation.objects.filter(user=self.request.user)
+        return Conversation.objects.filter(user=self.request.user).annotate(message_count=Count('messages'))
     
     @extend_schema(
         summary="Get conversation details",
@@ -152,31 +152,6 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
         return self.retrieve(request, *args, **kwargs)
     
     @extend_schema(
-        summary="Update conversation",
-        description="Update the title of a conversation",
-        tags=['Chat'],
-        request=ConversationSerializer,
-        responses={
-            200: ConversationSerializer,
-            400: OpenApiResponse(description="Invalid data"),
-            401: OpenApiResponse(description="Authentication required"),
-            403: OpenApiResponse(description="Permission denied"),
-            404: OpenApiResponse(description="Conversation not found"),
-        },
-        examples=[
-            OpenApiExample(
-                'Update Request',
-                value={
-                    'title': 'Updated Conversation Title'
-                },
-                request_only=True,
-            ),
-        ]
-    )
-    def put(self, request, *args, **kwargs):
-        return self.update(request, *args, **kwargs)
-    
-    @extend_schema(
         summary="Delete conversation",
         description="Delete a conversation and all its messages",
         tags=['Chat'],
@@ -223,163 +198,70 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
     def patch(self, request, *args, **kwargs):
         return self.partial_update(request, *args, **kwargs)
 
-class ChatView(APIView):
+class MessageListCreateView(generics.ListCreateAPIView):
+    serializer_class = MessageSerializer
     permission_classes = (permissions.IsAuthenticated,)
-    
+
+    def _get_owned_conversation(self):
+        conversation = Conversation.objects.filter(
+            uuid=self.kwargs['conversation_id'],
+            user=self.request.user,
+        ).first()
+        if conversation is None:
+            raise exceptions.NotFound('Conversation not found')
+        return conversation
+
+    def get_queryset(self):
+        return Message.objects.filter(conversation=self._get_owned_conversation()).order_by('created_at')
+
     @extend_schema(
-        summary="Send a message to the AI",
-        description="""
-        Send a message to the AI and receive a response using Google Gemini.
-        
-        **If conversation_id is provided:**
-        - Continues an existing conversation
-        - Message is added to that conversation's history
-        
-        **If no conversation_id:**
-        - Creates a new conversation
-        - Uses the first 50 characters of your message as the title
-        - Returns the AI response with the new conversation context
-        
-        The AI uses Google Gemini 2.5 Flash for fast, intelligent responses.
-        """,
+        summary="List messages of a conversation",
+        description="Retrieve all messages of a conversation owned by the authenticated user",
+        tags=['Chat'],
+        responses={
+            200: OpenApiResponse(
+                response=MessageSerializer(many=True),
+                description="Messages of the conversation"
+            ),
+            401: OpenApiResponse(description="Authentication required"),
+            404: OpenApiResponse(description="Conversation not found or not owned by the caller"),
+        },
+    )
+    def get(self, request, *args, **kwargs):
+        return self.list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Send a message in a conversation",
+        description="Send a message inside an existing conversation and return the complete assistant message",
         tags=['Chat'],
         request=OpenApiExample(
             'Message Request',
-            value={
-                'message': 'What is the capital of France?',
-            },
-            description='JSON object containing the user message',
+            value={'message': 'What is the capital of France?'},
         ),
         responses={
-            200: OpenApiResponse(
-                response=MessageSerializer,
-                description='AI response message from Gemini',
-                examples=[
-                    OpenApiExample(
-                        'Successful Response',
-                        value={
-                            'uuid': 'a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
-                            'role': 'assistant',
-                            'content': 'The capital of France is Paris. It is known as the "City of Light" and is famous for the Eiffel Tower, Louvre Museum, and Notre-Dame Cathedral.',
-                            'created_at': '2026-03-03T10:30:00Z'
-                        }
-                    )
-                ]
-            ),
             201: OpenApiResponse(
-                description='New conversation created with AI response',
                 response=MessageSerializer,
+                description="Assistant message created"
             ),
-            400: OpenApiResponse(
-                description='Bad request - message field is required',
-                examples=[
-                    OpenApiExample(
-                        'Missing Message',
-                        value={'error': 'Message is required'}
-                    )
-                ]
-            ),
-            401: OpenApiResponse(
-                description='Authentication credentials not provided',
-            ),
-            404: OpenApiResponse(
-                description='Conversation not found or does not belong to user',
-                examples=[
-                    OpenApiExample(
-                        'Conversation Not Found',
-                        value={'error': 'Conversation not found'}
-                    )
-                ]
-            ),
-            503: OpenApiResponse(
-                description='The AI provider is unavailable',
-                examples=[
-                    OpenApiExample(
-                        'Provider Unavailable',
-                        value={'error': {'code': 'llm_unavailable', 'message': 'The AI service is temporarily unavailable. Please try again later.'}}
-                    )
-                ]
-            ),
-            500: OpenApiResponse(
-                description='Internal server error not related to the provider',
-                examples=[
-                    OpenApiExample(
-                        'Server Error',
-                        value={'error': 'Failed to generate AI response. Please try again.'}
-                    )
-                ]
-            ),
+            400: OpenApiResponse(description="Message field is required"),
+            401: OpenApiResponse(description="Authentication required"),
+            404: OpenApiResponse(description="Conversation not found or not owned by the caller"),
+            503: OpenApiResponse(description="The AI provider is unavailable"),
         },
-        examples=[
-            OpenApiExample(
-                'New Conversation',
-                summary='Start a new conversation',
-                description='Send message without conversation_id to create new chat',
-                value={'message': 'Hello, who are you?'},
-                request_only=True,
-            ),
-            OpenApiExample(
-                'Continue Conversation',
-                summary='Continue existing conversation',
-                description='Include conversation_id to add to existing chat',
-                value={'message': 'Tell me more about that'},
-                request_only=True,
-            ),
-        ]
     )
-    def post(self, request, conversation_id=None):
+    def post(self, request, *args, **kwargs):
         user_message = request.data.get('message')
         if not user_message:
-            return Response({'error': 'Message is required'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        if conversation_id:
-            conversation = Conversation.objects.filter(
-                uuid=conversation_id, 
-                user=request.user
-            ).first()
-            if not conversation:
-                return Response({'error': 'Conversation not found'}, status=status.HTTP_404_NOT_FOUND)
-        else:
-            # Create new conversation with first message as title
-            title = user_message[:50] + "..." if len(user_message) > 50 else user_message
-            conversation = Conversation.objects.create(
-                user=request.user,
-                title=title
-            )
-        
-        user_msg = Message.objects.create(
-            conversation=conversation,
-            role='user',
-            content=user_message
-        )
-        
+            raise exceptions.ValidationError('Message is required')
+        conversation = self._get_owned_conversation()
         try:
-            # Conversation history, excluding the message just saved
-            messages = Message.objects.filter(conversation=conversation).order_by('created_at')
-            chat_history = [{'role': msg.role, 'content': msg.content} for msg in messages if msg.id != user_msg.id]
-            
-            ai_response = gemini_service.generate_response(user_message, chat_history)
-            
-            ai_msg = Message.objects.create(
-                conversation=conversation,
-                role='assistant',
-                content=ai_response
-            )
-            
-            serializer = MessageSerializer(ai_msg)
-            
-            # Return 201 if new conversation was created, 200 otherwise
-            status_code = status.HTTP_201_CREATED if not conversation_id else status.HTTP_200_OK
-            return Response(serializer.data, status=status_code)
-
+            ai_msg = generate_assistant_reply(conversation, user_message)
         except LLMUnavailableError as e:
             return Response(
-                {'error': {'code': 'llm_unavailable', 'message': str(e)}},
+                {'error': {'code': 'llm_unavailable', 'message': str(e), 'details': {}}},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
         except Exception as e:
             logger.error(f"Chat error for user {request.user.id}: {str(e)}")
-            return Response(
-                {'error': 'Failed to generate AI response. Please try again.'}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            raise
+        return Response(MessageSerializer(ai_msg).data, status=status.HTTP_201_CREATED)

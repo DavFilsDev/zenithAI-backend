@@ -3,6 +3,8 @@ from google.genai import types
 from django.conf import settings
 import logging
 
+from .models import Message
+
 logger = logging.getLogger(__name__)
 
 
@@ -79,3 +81,11 @@ Be concise, friendly, and educational in tone."""
 
 # Singleton instance used across the app
 gemini_service = GeminiService()
+
+
+def generate_assistant_reply(conversation, user_message):
+    user_msg = Message.objects.create(conversation=conversation, role='user', content=user_message)
+    messages = Message.objects.filter(conversation=conversation).order_by('created_at')
+    chat_history = [{'role': msg.role, 'content': msg.content} for msg in messages if msg.id != user_msg.id]
+    ai_response = gemini_service.generate_response(user_message, chat_history)
+    return Message.objects.create(conversation=conversation, role='assistant', content=ai_response)

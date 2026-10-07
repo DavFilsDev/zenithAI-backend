@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     # Local apps
     'users',
     'chat',
+    'health',
 ]
 
 MIDDLEWARE = [
@@ -132,6 +133,8 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_PAGINATION_CLASS': 'backend.pagination.StandardResultsSetPagination',
+    'EXCEPTION_HANDLER': 'backend.exceptions.exception_handler',
 }
 
 # JWT Settings
@@ -155,9 +158,10 @@ SPECTACULAR_SETTINGS = {
 
     ## Authentication
     Most endpoints require JWT authentication via Bearer token.
-    Obtain tokens via `/api/auth/token/` endpoint.
+    Obtain tokens via `/api/v1/auth/token/` endpoint.
     ''',
     'VERSION': '1.0.0',
+    'SERVERS': [{'url': '/api/v1'}],
     'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,
     

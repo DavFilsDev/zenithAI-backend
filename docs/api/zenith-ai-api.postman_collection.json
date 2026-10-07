@@ -1,14 +1,14 @@
 {
   "info": {
-    "name": "ZenithAI API",
-    "description": "Complete API collection for ZenithAI platform",
+    "name": "ZenithAI API v1",
+    "description": "Contract collection for the ZenithAI API, versioned under /api/v1. Requests are meant to run in order: the Authentication folder logs in and saves access_token/refresh_token, the Conversations folder saves conversation_uuid from the create response, and Logout must run last because it blacklists the current refresh token.\n\nError responses are asserted with the shared envelope {error: {code, message, details}}. Sending a message needs a live Gemini key: a missing or invalid key returns 503 llm_unavailable.\n\nThrottling is not implemented yet (P2.8): no endpoint returns 429 today. The rate-limit request below asserts the rate_limited envelope only when a 429 is actually received, and a live 429 opens together with the P2.8 throttle scopes.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "version": "1.0.0"
+    "version": "2.0.0"
   },
   "item": [
     {
       "name": "Authentication",
-      "description": "Endpoints for user authentication and management",
+      "description": "Registration, tokens, profile and logout",
       "item": [
         {
           "name": "Register User",
@@ -21,15 +21,36 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/auth/register/",
+              "raw": "{{base_url}}/api/v1/auth/register/",
               "host": ["{{base_url}}"],
-              "path": ["api", "auth", "register", ""]
+              "path": ["api", "v1", "auth", "register", ""]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"email\": \"test@example.com\",\n    \"username\": \"testuser\",\n    \"password\": \"Test123!\",\n    \"password2\": \"Test123!\"\n}"
+              "raw": "{\n    \"email\": \"test@example.com\",\n    \"username\": \"testuser\",\n    \"password\": \"Sterlin!Str0ng-42\",\n    \"password2\": \"Sterlin!Str0ng-42\"\n}"
             }
           },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Payload carries email and username but never the password\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.email).to.eql(\"test@example.com\");",
+                  "    pm.expect(jsonData.username).to.eql(\"testuser\");",
+                  "    pm.expect(jsonData).to.not.have.property(\"password\");",
+                  "    pm.expect(jsonData).to.not.have.property(\"password2\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "response": []
         },
         {
@@ -43,13 +64,13 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/auth/token/",
+              "raw": "{{base_url}}/api/v1/auth/token/",
               "host": ["{{base_url}}"],
-              "path": ["api", "auth", "token", ""]
+              "path": ["api", "v1", "auth", "token", ""]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"email\": \"test@example.com\",\n    \"password\": \"Test123!\"\n}"
+              "raw": "{\n    \"email\": \"test@example.com\",\n    \"password\": \"Sterlin!Str0ng-42\"\n}"
             }
           },
           "event": [
@@ -61,8 +82,10 @@
                   "    pm.response.to.have.status(200);",
                   "});",
                   "",
-                  "pm.test(\"Save access token\", function () {",
+                  "pm.test(\"Save access and refresh tokens\", function () {",
                   "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.access).to.be.a(\"string\");",
+                  "    pm.expect(jsonData.refresh).to.be.a(\"string\");",
                   "    pm.environment.set(\"access_token\", jsonData.access);",
                   "    pm.environment.set(\"refresh_token\", jsonData.refresh);",
                   "});"
@@ -84,19 +107,52 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/auth/token/refresh/",
+              "raw": "{{base_url}}/api/v1/auth/token/refresh/",
               "host": ["{{base_url}}"],
-              "path": ["api", "auth", "token", "refresh"]
+              "path": ["api", "v1", "auth", "token", "refresh", ""]
             },
             "body": {
               "mode": "raw",
               "raw": "{\n    \"refresh\": \"{{refresh_token}}\"\n}"
             }
           },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Save the rotated refresh token\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.access).to.be.a(\"string\");",
+                  "    pm.expect(jsonData.refresh).to.be.a(\"string\");",
+                  "    pm.environment.set(\"access_token\", jsonData.access);",
+                  "    pm.environment.set(\"refresh_token\", jsonData.refresh);",
+                  "});",
+                  "",
+                  "pm.test(\"The refresh token is single-use\", function () {",
+                  "    pm.sendRequest({",
+                  "        url: pm.environment.get(\"base_url\") + \"/api/v1/auth/token/refresh/\",",
+                  "        method: \"POST\",",
+                  "        header: { \"Content-Type\": \"application/json\" },",
+                  "        body: { mode: \"raw\", raw: JSON.stringify({ refresh: pm.environment.get(\"refresh_token\") }) }",
+                  "    }, function (err, res) {",
+                  "        pm.expect(err).to.eql(null);",
+                  "        pm.expect(res.code).to.eql(401);",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "response": []
         },
         {
-          "name": "Get User Profile",
+          "name": "Get Profile",
           "request": {
             "method": "GET",
             "header": [
@@ -106,15 +162,80 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/auth/profile/",
+              "raw": "{{base_url}}/api/v1/auth/profile/",
               "host": ["{{base_url}}"],
-              "path": ["api", "auth", "profile"]
+              "path": ["api", "v1", "auth", "profile", ""]
             }
           },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Profile carries id, email and username\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.id).to.be.a(\"number\");",
+                  "    pm.expect(jsonData.email).to.be.a(\"string\");",
+                  "    pm.expect(jsonData.username).to.be.a(\"string\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "response": []
         },
         {
-          "name": "Update User Profile",
+          "name": "Update Profile (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/profile/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "profile", ""]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"username\": \"testuser-updated\",\n    \"email\": \"test@example.com\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Payload reflects the change\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.username).to.eql(\"testuser-updated\");",
+                  "    pm.expect(jsonData.email).to.eql(\"test@example.com\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Profile PUT is not allowed",
           "request": {
             "method": "PUT",
             "header": [
@@ -128,41 +249,92 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/auth/profile/",
+              "raw": "{{base_url}}/api/v1/auth/profile/",
               "host": ["{{base_url}}"],
-              "path": ["api", "auth", "profile"]
+              "path": ["api", "v1", "auth", "profile", ""]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"username\": \"updateduser\",\n    \"email\": \"updated@example.com\"\n}"
+              "raw": "{\n    \"username\": \"testuser\"\n}"
             }
           },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 405\", function () {",
+                  "    pm.response.to.have.status(405);",
+                  "});",
+                  "",
+                  "pm.test(\"Error uses the method_not_allowed envelope\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"method_not_allowed\");",
+                  "    pm.expect(jsonData.error.message).to.be.a(\"string\");",
+                  "    pm.expect(jsonData.error.details).to.eql({});",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/auth/logout/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "auth", "logout", ""]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"refresh\": \"{{refresh_token}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 204\", function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});",
+                  "",
+                  "pm.test(\"The refresh token is blacklisted\", function () {",
+                  "    pm.sendRequest({",
+                  "        url: pm.environment.get(\"base_url\") + \"/api/v1/auth/token/refresh/\",",
+                  "        method: \"POST\",",
+                  "        header: { \"Content-Type\": \"application/json\" },",
+                  "        body: { mode: \"raw\", raw: JSON.stringify({ refresh: pm.environment.get(\"refresh_token\") }) }",
+                  "    }, function (err, res) {",
+                  "        pm.expect(err).to.eql(null);",
+                  "        pm.expect(res.code).to.eql(401);",
+                  "        var jsonData = res.json();",
+                  "        pm.expect(jsonData.error.code).to.eql(\"unauthorized\");",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "response": []
         }
       ]
     },
     {
-      "name": "Chat",
-      "description": "Endpoints for conversation and message management",
+      "name": "Conversations",
+      "description": "Conversation CRUD, pagination and ownership",
       "item": [
-        {
-          "name": "List Conversations",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{access_token}}"
-              }
-            ],
-            "url": {
-              "raw": "{{base_url}}/api/chat/conversations/",
-              "host": ["{{base_url}}"],
-              "path": ["api", "chat", "conversations", ""]
-            }
-          },
-          "response": []
-        },
         {
           "name": "Create Conversation",
           "request": {
@@ -178,19 +350,40 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/chat/conversations/",
+              "raw": "{{base_url}}/api/v1/chat/conversations/",
               "host": ["{{base_url}}"],
-              "path": ["api", "chat", "conversations", ""]
+              "path": ["api", "v1", "chat", "conversations", ""]
             },
             "body": {
               "mode": "raw",
               "raw": "{\n    \"title\": \"My First Conversation\"\n}"
             }
           },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 201\", function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test(\"Save the conversation uuid\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.uuid).to.be.a(\"string\");",
+                  "    pm.expect(jsonData.message_count).to.eql(0);",
+                  "    pm.expect(jsonData).to.not.have.property(\"messages\");",
+                  "    pm.environment.set(\"conversation_uuid\", jsonData.uuid);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "response": []
         },
         {
-          "name": "Get Conversation Details",
+          "name": "List Conversations",
           "request": {
             "method": "GET",
             "header": [
@@ -200,15 +393,162 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/chat/conversations/1/",
+              "raw": "{{base_url}}/api/v1/chat/conversations/",
               "host": ["{{base_url}}"],
-              "path": ["api", "chat", "conversations", "1"]
+              "path": ["api", "v1", "chat", "conversations", ""]
             }
           },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"List responses paginate with the shared envelope\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property(\"count\");",
+                  "    pm.expect(jsonData).to.have.property(\"next\");",
+                  "    pm.expect(jsonData).to.have.property(\"previous\");",
+                  "    pm.expect(jsonData.results).to.be.an(\"array\");",
+                  "});",
+                  "",
+                  "pm.test(\"Items are lean and carry message_count\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.results.length > 0) {",
+                  "        var item = jsonData.results[0];",
+                  "        pm.expect(item.uuid).to.be.a(\"string\");",
+                  "        pm.expect(item.message_count).to.be.a(\"number\");",
+                  "        pm.expect(item).to.not.have.property(\"messages\");",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "response": []
         },
         {
-          "name": "Update Conversation",
+          "name": "List Conversations - page_size cap",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat/conversations/?page_size=100",
+              "host": ["{{base_url}}"],
+              "query": [
+                {
+                  "key": "page_size",
+                  "value": "100"
+                }
+              ],
+              "path": ["api", "v1", "chat", "conversations", ""]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"A client page_size above the cap is capped at 20\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.results.length).to.be.at.most(20);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get Conversation",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat/conversations/{{conversation_uuid}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "chat", "conversations", "{{conversation_uuid}}", ""]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Detail embeds the messages and message_count\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.uuid).to.eql(pm.environment.get(\"conversation_uuid\"));",
+                  "    pm.expect(jsonData.messages).to.be.an(\"array\");",
+                  "    pm.expect(jsonData.message_count).to.be.a(\"number\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update Conversation (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat/conversations/{{conversation_uuid}}/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "chat", "conversations", "{{conversation_uuid}}", ""]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"title\": \"Updated Conversation Title\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200 and the title changed\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().title).to.eql(\"Updated Conversation Title\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Conversation PUT is not allowed",
           "request": {
             "method": "PUT",
             "header": [
@@ -222,15 +562,72 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/chat/conversations/1/",
+              "raw": "{{base_url}}/api/v1/chat/conversations/{{conversation_uuid}}/",
               "host": ["{{base_url}}"],
-              "path": ["api", "chat", "conversations", "1"]
+              "path": ["api", "v1", "chat", "conversations", "{{conversation_uuid}}", ""]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"title\": \"Updated Conversation Title\"\n}"
+              "raw": "{\n    \"title\": \"Renamed\"\n}"
             }
           },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 405\", function () {",
+                  "    pm.response.to.have.status(405);",
+                  "});",
+                  "",
+                  "pm.test(\"Error uses the method_not_allowed envelope\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"method_not_allowed\");",
+                  "    pm.expect(jsonData.error.details).to.eql({});",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get Conversation - not found",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat/conversations/00000000-0000-0000-0000-000000000000/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "chat", "conversations", "00000000-0000-0000-0000-000000000000", ""]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Error uses the not_found envelope\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"not_found\");",
+                  "    pm.expect(jsonData.error.message).to.be.a(\"string\");",
+                  "    pm.expect(jsonData.error.details).to.eql({});",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "response": []
         },
         {
@@ -244,15 +641,75 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/chat/conversations/1/",
+              "raw": "{{base_url}}/api/v1/chat/conversations/{{conversation_uuid}}/",
               "host": ["{{base_url}}"],
-              "path": ["api", "chat", "conversations", "1"]
+              "path": ["api", "v1", "chat", "conversations", "{{conversation_uuid}}", ""]
             }
           },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 204\", function () {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Messages",
+      "description": "Nested message resource of a conversation",
+      "item": [
+        {
+          "name": "List Messages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat/conversations/{{conversation_uuid}}/messages/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "chat", "conversations", "{{conversation_uuid}}", "messages", ""]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Messages paginate and carry role and content\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property(\"count\");",
+                  "    pm.expect(jsonData.results).to.be.an(\"array\");",
+                  "    if (jsonData.results.length > 0) {",
+                  "        pm.expect(jsonData.results[0].role).to.be.a(\"string\");",
+                  "        pm.expect(jsonData.results[0].content).to.be.a(\"string\");",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "response": []
         },
         {
-          "name": "Send Message (New Chat)",
+          "name": "Send Message",
           "request": {
             "method": "POST",
             "header": [
@@ -266,19 +723,48 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/chat/chat/",
+              "raw": "{{base_url}}/api/v1/chat/conversations/{{conversation_uuid}}/messages/",
               "host": ["{{base_url}}"],
-              "path": ["api", "chat", "chat"]
+              "path": ["api", "v1", "chat", "conversations", "{{conversation_uuid}}", "messages", ""]
             },
             "body": {
               "mode": "raw",
               "raw": "{\n    \"message\": \"What is the capital of France?\"\n}"
             }
           },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    pm.test(\"Assistant message is returned\", function () {",
+                  "        var jsonData = pm.response.json();",
+                  "        pm.expect(jsonData.role).to.eql(\"assistant\");",
+                  "        pm.expect(jsonData.content).to.be.a(\"string\");",
+                  "        pm.expect(jsonData.uuid).to.be.a(\"string\");",
+                  "    });",
+                  "} else if (pm.response.code === 503) {",
+                  "    pm.test(\"Provider failure returns the llm_unavailable envelope\", function () {",
+                  "        var jsonData = pm.response.json();",
+                  "        pm.expect(jsonData.error.code).to.eql(\"llm_unavailable\");",
+                  "        pm.expect(jsonData.error.message).to.be.a(\"string\");",
+                  "        pm.expect(jsonData.error.details).to.eql({});",
+                  "    });",
+                  "} else {",
+                  "    pm.test(\"Status code is 201 or 503\", function () {",
+                  "        pm.expect.fail(\"Unexpected status code: \" + pm.response.code);",
+                  "    });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "response": []
         },
         {
-          "name": "Send Message (Existing Chat)",
+          "name": "Send Message - missing message",
           "request": {
             "method": "POST",
             "header": [
@@ -292,15 +778,202 @@
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/chat/chat/1/",
+              "raw": "{{base_url}}/api/v1/chat/conversations/{{conversation_uuid}}/messages/",
               "host": ["{{base_url}}"],
-              "path": ["api", "chat", "chat", "1"]
+              "path": ["api", "v1", "chat", "conversations", "{{conversation_uuid}}", "messages", ""]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"message\": \"Tell me more about its history.\"\n}"
+              "raw": "{}"
             }
           },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error uses the validation_error envelope\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"validation_error\");",
+                  "    pm.expect(jsonData.error.message).to.eql(\"Message is required\");",
+                  "    pm.expect(jsonData.error.details).to.eql({});",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Send Message - unknown conversation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat/conversations/00000000-0000-0000-0000-000000000000/messages/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "chat", "conversations", "00000000-0000-0000-0000-000000000000", "messages", ""]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"message\": \"Hello\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Error uses the not_found envelope\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"not_found\");",
+                  "    pm.expect(jsonData.error.message).to.eql(\"Conversation not found\");",
+                  "    pm.expect(jsonData.error.details).to.eql({});",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "description": "Public monitoring probe",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/health/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "health", ""]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Body is the plain probe result\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.status).to.eql(\"ok\");",
+                  "    pm.expect(jsonData.database).to.eql(\"ok\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Errors",
+      "description": "Shared error envelope and authentication",
+      "item": [
+        {
+          "name": "Authenticated List Without Token returns 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat/conversations/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "chat", "conversations", ""]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Error uses the unauthorized envelope\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.error.code).to.eql(\"unauthorized\");",
+                  "    pm.expect(jsonData.error.message).to.be.a(\"string\");",
+                  "    pm.expect(jsonData.error.details).to.eql({});",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Rate Limit - 429 (P2.8)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/chat/conversations/",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "chat", "conversations", ""]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Throttling is not implemented yet (P2.8). When a 429 arrives,",
+                  "// assert the rate_limited envelope and Retry-After header.",
+                  "if (pm.response.code === 429) {",
+                  "    pm.test(\"Error uses the rate_limited envelope\", function () {",
+                  "        var jsonData = pm.response.json();",
+                  "        pm.expect(jsonData.error.code).to.eql(\"rate_limited\");",
+                  "        pm.expect(jsonData.error.details).to.eql({});",
+                  "    });",
+                  "    pm.test(\"Retry-After header is present\", function () {",
+                  "        pm.expect(pm.response.headers.has(\"Retry-After\")).to.eql(true);",
+                  "    });",
+                  "}",
+                  "",
+                  "pm.test(\"No 429 expected until P2.8 throttle scopes land\", function () {",
+                  "    pm.expect(pm.response.code).to.not.eql(429);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
           "response": []
         }
       ]

@@ -85,8 +85,14 @@ class RegisterView(generics.CreateAPIView):
             400: OpenApiExample(
                 'Validation Error',
                 value={
-                    "email": ["user with this email already exists."],
-                    "password": ["Password fields didn't match."]
+                    "error": {
+                        "code": "validation_error",
+                        "message": "The request payload is invalid.",
+                        "details": {
+                            "email": ["user with this email already exists."],
+                            "password": ["Password fields didn't match."]
+                        }
+                    }
                 }
             ),
         },
@@ -108,6 +114,7 @@ class RegisterView(generics.CreateAPIView):
 
 class UserProfileView(generics.RetrieveUpdateAPIView):
     serializer_class = UserSerializer
+    http_method_names = ('get', 'patch', 'head', 'options')
     permission_classes = (permissions.IsAuthenticated,)
     
     def get_object(self):
@@ -140,31 +147,7 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
     )
     def get(self, request, *args, **kwargs):
         return self.retrieve(request, *args, **kwargs)
-    
-    @extend_schema(
-        summary="Update user profile",
-        description="Update the authenticated user's profile information",
-        tags=['Users'],
-        request=UserSerializer,
-        responses={
-            200: UserSerializer,
-            400: OpenApiResponse(description="Invalid data provided"),
-            401: OpenApiResponse(description="Authentication required"),
-        },
-        examples=[
-            OpenApiExample(
-                'Update Request',
-                value={
-                    'username': 'newusername',
-                    'email': 'newemail@example.com'
-                },
-                request_only=True,
-            ),
-        ]
-    )
-    def put(self, request, *args, **kwargs):
-        return self.update(request, *args, **kwargs)
-    
+
     @extend_schema(
         summary="Partially update user profile",
         description="Partially update the authenticated user's profile information",

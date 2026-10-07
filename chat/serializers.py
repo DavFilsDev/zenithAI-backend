@@ -17,7 +17,7 @@ class ConversationListSerializer(serializers.ModelSerializer):
 
 class ConversationSerializer(serializers.ModelSerializer):
     messages = MessageSerializer(many=True, read_only=True)
-    message_count = serializers.IntegerField(source='messages.count', read_only=True)
+    message_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = Conversation

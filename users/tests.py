@@ -93,6 +93,13 @@ class TokenSecurityTests(APITestCase):
         refresh = self.client.post(reverse('token_refresh'), {'refresh': self.refresh})
         self.assertEqual(refresh.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    def test_logout_on_the_contract_path_blacklists_the_token(self):
+        response = self.client.post('/api/v1/auth/logout/', {'refresh': self.refresh})
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        refresh = self.client.post('/api/v1/auth/token/refresh/', {'refresh': self.refresh})
+        self.assertEqual(refresh.status_code, status.HTTP_401_UNAUTHORIZED)
+
     def test_logout_rejects_a_missing_refresh_token(self):
         response = self.client.post(reverse('logout'), {})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
@@ -122,7 +129,8 @@ class EmailNormalizationTests(APITestCase):
             'password2': 'Str0ng-Passw0rd!42',
         })
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('email', response.data)
+        self.assertEqual(response.data['error']['code'], 'validation_error')
+        self.assertIn('email', response.data['error']['details'])
 
     def test_login_accepts_uppercase_email(self):
         self.password = 'Str0ng-Passw0rd!42'
@@ -149,3 +157,36 @@ class EmailNormalizationTests(APITestCase):
                 username='db-case-two',
                 password='Str0ng-Passw0rd!42',
             )
+
+
+class ErrorEnvelopeTests(APITestCase):
+    def setUp(self):
+        self.password = 'Str0ng-Passw0rd!42'
+        self.user = User.objects.create_user(
+            email='errors@example.com',
+            username='errors',
+            password=self.password,
+        )
+
+    def test_unauthenticated_request_returns_unauthorized_envelope(self):
+        response = self.client.get(reverse('profile'))
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.data['error']['code'], 'unauthorized')
+        self.assertIn('message', response.data['error'])
+        self.assertEqual(response.data['error']['details'], {})
+
+    def test_registration_returns_field_map_in_details(self):
+        response = self.client.post(reverse('register'), {
+            'username': 'noemail',
+            'password': self.password,
+            'password2': self.password,
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data['error']['code'], 'validation_error')
+        self.assertIn('email', response.data['error']['details'])
+
+    def test_put_profile_returns_method_not_allowed(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.put(reverse('profile'), {'username': 'renamed'})
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertEqual(response.data['error']['code'], 'method_not_allowed')
