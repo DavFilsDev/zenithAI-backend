@@ -131,21 +131,17 @@ A conversation looks like this, and always embeds its full message list:
       "id": 1,
       "role": "user",
       "content": "What is Django?",
-      "tokens": 0,
       "created_at": "2026-02-20T14:26:04.000000Z"
     },
     {
       "id": 2,
       "role": "assistant",
       "content": "Django is a Python web framework.",
-      "tokens": 0,
       "created_at": "2026-02-20T14:26:07.000000Z"
     }
   ]
 }
 ```
-
-`tokens` is always `0`: no code populates it. It is removed in phase P0.
 
 ### List conversations
 
@@ -193,7 +189,6 @@ Response, the assistant message only:
   "id": 2,
   "role": "assistant",
   "content": "The capital of France is Paris.",
-  "tokens": 0,
   "created_at": "2026-02-20T14:26:07.000000Z"
 }
 ```
