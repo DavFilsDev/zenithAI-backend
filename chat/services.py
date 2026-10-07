@@ -24,32 +24,18 @@ When answering coding questions:
 Be concise, friendly, and educational in tone."""
 
     def __init__(self):
-        try:
-            self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
-            self.model_name = settings.GEMINI_MODEL
-            self.available = True
-            logger.info(f"Gemini AI initialized with model: {self.model_name}")
-            self._test_connection()
-        except Exception as e:
-            self.available = False
-            logger.error(f" Failed to initialize Gemini: {str(e)}")
+        self.model_name = settings.GEMINI_MODEL
+        self.client = None
 
-    def _test_connection(self):
-        try:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents="Hi",
-                config=types.GenerateContentConfig(max_output_tokens=5),
-            )
-            logger.info(f" Connection test successful: {self.model_name}")
-        except Exception as e:
-            logger.warning(f" Model test failed: {str(e)}")
+    def _client(self):
+        if self.client is None:
+            self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        return self.client
 
     def generate_response(self, message, conversation_history=None):
-        if not self.available:
-            return " AI service is currently unavailable. Please try again later."
-
         try:
+            client = self._client()
+
             # Build the conversation as a single prompt with history context
             if conversation_history:
                 context_parts = []
@@ -63,7 +49,7 @@ Be concise, friendly, and educational in tone."""
 
             logger.info(f"Generating response with model: {self.model_name}")
 
-            response = self.client.models.generate_content(
+            response = client.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
                 config=types.GenerateContentConfig(
