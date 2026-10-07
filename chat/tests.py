@@ -1,10 +1,13 @@
 from uuid import UUID
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.test import override_settings
 from rest_framework.test import APITestCase
 
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, MessageSerializer
+from .services import LLMUnavailableError, gemini_service
 
 User = get_user_model()
 
@@ -80,3 +83,58 @@ class UuidPayloadTests(APITestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(UUID(response.data['uuid']), self.conversation.uuid)
+
+
+class ListPayloadTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='list@example.com',
+            username='list-user',
+            password='Str0ng-Passw0rd!42',
+        )
+        self.conversation = Conversation.objects.create(user=self.user, title='List chat')
+        Message.objects.create(conversation=self.conversation, role='user', content='Hi')
+        Message.objects.create(conversation=self.conversation, role='assistant', content='Hello back')
+        self.client.force_authenticate(user=self.user)
+
+    def test_list_payload_is_lean(self):
+        response = self.client.get('/api/chat/conversations/')
+        self.assertEqual(response.status_code, 200)
+        item = response.data[0]
+        self.assertNotIn('messages', item)
+        self.assertEqual(item['message_count'], 2)
+        UUID(item['uuid'])
+
+    def test_list_uses_a_constant_number_of_queries(self):
+        with self.assertNumQueries(1):
+            response = self.client.get('/api/chat/conversations/')
+        self.assertEqual(response.status_code, 200)
+
+
+class ProviderFailureTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='provider@example.com',
+            username='provider-user',
+            password='Str0ng-Passw0rd!42',
+        )
+        self.client.force_authenticate(user=self.user)
+
+    @patch(
+        'chat.views.gemini_service.generate_response',
+        side_effect=LLMUnavailableError('The AI service is temporarily unavailable. Please try again later.'),
+    )
+    def test_provider_failure_returns_503_and_persists_nothing(self, mock_generate):
+        response = self.client.post('/api/chat/chat/', {'message': 'Hello'})
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.data['error']['code'], 'llm_unavailable')
+
+        conversation = Conversation.objects.get(title='Hello')
+        self.assertEqual(conversation.messages.filter(role='assistant').count(), 0)
+        self.assertEqual(conversation.messages.count(), 1)
+        self.assertEqual(conversation.messages.first().role, 'user')
+
+    def test_generate_response_raises_without_an_api_key(self):
+        with override_settings(GEMINI_API_KEY=''):
+            with self.assertRaises(LLMUnavailableError):
+                gemini_service.generate_response('Hello')

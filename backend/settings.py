@@ -146,14 +146,13 @@ SIMPLE_JWT = {
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Zenith AI API',
     'DESCRIPTION': '''
-    Zenith AI is a ChatGPT-like platform API built with Django REST Framework.
-    
+    Zenith AI is a chatbot platform API built with Django REST Framework.
+
     ## Features
     - User authentication with JWT
     - Conversation management
     - Message history
-    - Credit system for API usage
-    
+
     ## Authentication
     Most endpoints require JWT authentication via Bearer token.
     Obtain tokens via `/api/auth/token/` endpoint.
