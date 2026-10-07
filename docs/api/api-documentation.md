@@ -18,7 +18,7 @@ Every endpoint requires a bearer token except registration and token issuance.
 Authorization: Bearer <access_token>
 ```
 
-Access tokens are valid for 1 day, refresh tokens for 7 days. Refresh tokens rotate on use. Today the rotated token is **not** blacklisted, and there is no logout endpoint: a refresh token stays usable until it expires. Both are fixed in phase P0 of the improvement plan.
+Access tokens are valid for 15 minutes, refresh tokens for 7 days. Refresh tokens rotate on use and the rotated token is blacklisted, so a refresh token can only be used once. A logout endpoint (`POST /api/auth/logout/`) blacklists the presented refresh token immediately.
 
 ## Endpoints
 
@@ -97,6 +97,20 @@ The four default password validators apply, so a weak or common password is reje
 }
 ```
 
+### Logout
+
+`POST /api/auth/logout/`, no authentication.
+
+```json
+{
+  "refresh": "eyJ0eXAiOiJKV1Qi..."
+}
+```
+
+`204 No Content`. The presented refresh token is blacklisted and can no longer be used: any later call to `POST /api/auth/token/refresh/` with it returns `401`.
+
+`400 Bad Request` when the refresh token is missing or malformed.
+
 ### Read the profile
 
 `GET /api/auth/profile/`, authentication required.
@@ -115,26 +129,26 @@ The four default password validators apply, so a weak or common password is reje
 
 ## Conversations
 
-Base path `/api/chat/conversations/`, authentication required. Ids are integers. There is no pagination: a list endpoint returns a plain JSON array.
+Base path `/api/chat/conversations/`, authentication required. Conversations and messages are identified by a `uuid` string. There is no pagination: a list endpoint returns a plain JSON array.
 
 A conversation looks like this, and always embeds its full message list:
 
 ```json
 {
-  "id": 1,
+  "uuid": "3f7a2c1e-8b4d-4f0e-9a2c-1e8b4d4f0e9a",
   "title": "My first conversation",
   "created_at": "2026-02-20T14:26:03.123456Z",
   "updated_at": "2026-02-20T14:26:03.123456Z",
   "message_count": 2,
   "messages": [
     {
-      "id": 1,
+      "uuid": "5e4b3a2c-1d9f-4b8e-a3c5-6d7f8a9b0c1d",
       "role": "user",
       "content": "What is Django?",
       "created_at": "2026-02-20T14:26:04.000000Z"
     },
     {
-      "id": 2,
+      "uuid": "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
       "role": "assistant",
       "content": "Django is a Python web framework.",
       "created_at": "2026-02-20T14:26:07.000000Z"
@@ -186,7 +200,7 @@ Response, the assistant message only:
 
 ```json
 {
-  "id": 2,
+  "uuid": "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
   "role": "assistant",
   "content": "The capital of France is Paris.",
   "created_at": "2026-02-20T14:26:07.000000Z"
@@ -219,7 +233,6 @@ None of the following exists today. All of them are specified in [`docs/API_CONT
 | Messages as a sub-resource | `GET,POST /api/v1/conversations/{uuid}/messages/` |
 | Server-sent event streaming | `POST /api/v1/conversations/{uuid}/messages/stream/` |
 | Paginated lists | `{count, next, previous, results}`, page size 20 |
-| UUID identifiers | `uuid` instead of an integer id |
 | Health check | `GET /api/v1/health/` |
 | Versioned base path | `/api/v1/` |
 | Shared error envelope | `{"error": {"code", "message", "details"}}` |

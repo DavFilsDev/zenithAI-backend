@@ -102,9 +102,9 @@ python manage.py spectacular --file schema.yml
 | GET | `/api/schema/`, `/api/docs/`, `/api/redoc/` | No |
 | GET | `/admin/` | Staff |
 
-Authentication is a bearer token: `Authorization: Bearer <access_token>`. Access tokens last 1 day, refresh tokens 7 days and rotate on use.
+Authentication is a bearer token: `Authorization: Bearer <access_token>`. Access tokens last 15 minutes, refresh tokens 7 days, rotate on use and the rotated token is blacklisted.
 
-Ids are integers, lists are not paginated, and there is no logout, no streaming and no throttling yet. The full list of what is missing is in the improvement plan.
+Conversation and message ids are UUID strings, lists are not paginated, and there is no streaming and no throttling yet. The full list of what is missing is in the improvement plan.
 
 ## Project structure
 
@@ -124,20 +124,20 @@ requirements.txt
 python manage.py test
 ```
 
-The suite is currently empty: `users/tests.py` holds the default Django placeholder and there is no `chat/tests.py`, so the command passes while running zero tests. Writing them is task P3.6 of the improvement plan.
+The suite lives in `users/tests.py` and `chat/tests.py`: token payloads, refresh-token blacklisting, logout, conversation and message serialization. Expanding it to full coverage is task P3.6 of the improvement plan.
 
 ## Status & Roadmap
 
 Implemented today:
 
 - Registration, token issuance, token refresh, profile read and update
+- Refresh-token rotation with blacklisting, 15-minute access tokens, logout
 - Conversation creation, listing, read, update, delete
 - Message exchange with a server-side Gemini key
 - Swagger UI, ReDoc and OpenAPI schema
 
 Planned, in the order of the roadmap:
 
-- Shorter access tokens, working refresh blacklisting, logout
 - UUID identifiers, then the `/api/v1/` base path, message sub-resource, pagination, health check and a shared error envelope
 - A provider interface with a second free provider, SSE streaming, throttling and a global daily cap
 - Tooling: `pyproject.toml`, ruff, mypy, pytest, coverage, pre-commit
