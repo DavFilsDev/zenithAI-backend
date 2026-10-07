@@ -94,7 +94,7 @@ python manage.py spectacular --file schema.yml
 | POST | `/api/auth/register/` | No |
 | POST | `/api/auth/token/` | No |
 | POST | `/api/auth/token/refresh/` | No |
-| GET, PATCH, PUT | `/api/auth/profile/` | Yes |
+| GET, PATCH | `/api/auth/profile/` | Yes |
 | GET, POST | `/api/chat/conversations/` | Yes |
 | GET, PATCH, PUT, DELETE | `/api/chat/conversations/{id}/` | Yes |
 | POST | `/api/chat/chat/` | Yes |

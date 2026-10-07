@@ -177,3 +177,9 @@ class ErrorEnvelopeTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data['error']['code'], 'validation_error')
         self.assertIn('email', response.data['error']['details'])
+
+    def test_put_profile_returns_method_not_allowed(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.put(reverse('profile'), {'username': 'renamed'})
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        self.assertEqual(response.data['error']['code'], 'method_not_allowed')

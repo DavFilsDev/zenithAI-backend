@@ -17,7 +17,7 @@ Source: `backend/urls.py`, `users/urls.py`, `chat/urls.py`.
 | `POST /api/auth/register/` | `AllowAny` | `users/views.py:56-64` |
 | `POST /api/auth/token/` | `AllowAny` (SimpleJWT) | `users/urls.py:7` |
 | `POST /api/auth/token/refresh/` | `AllowAny` | `users/urls.py:8` |
-| `GET, PUT, PATCH /api/auth/profile/` | `IsAuthenticated` | `users/views.py:98-183` |
+| `GET, PATCH /api/auth/profile/` | `IsAuthenticated` | `users/views.py:98-163` |
 | `GET, POST /api/chat/conversations/` | `IsAuthenticated` | `chat/views.py:13-34` |
 | `GET, PUT, PATCH, DELETE /api/chat/conversations/<int:pk>/` | `IsAuthenticated` | `chat/views.py:113-132` |
 | `POST /api/chat/chat/` | `IsAuthenticated` | `chat/urls.py:7` |
@@ -197,7 +197,7 @@ Effort: **S** under half a day, **M** one to three days, **L** more than three d
 - [x] **P1.4** Add the shared error envelope through a custom DRF exception handler. — *M* — every error response, including validation, throttling, 404 and 500, matches `{"error": {"code", "message", "details"}}` with the codes defined in the contract. — Depends on: nothing.
 - [x] **P1.5** Add `GET /api/v1/health/`. — *S* — the endpoint is public, returns `200` with the database check result, and does not require a token. — Depends on: P1.1.
 - [x] **P1.6** Serve the documentation under `/api/v1/docs/`, `/api/v1/redoc/` and `/api/v1/schema/`. — *S* — all three paths load and the schema validates with `manage.py spectacular --validate`. — Depends on: P1.1.
-- [ ] **P1.7** Restrict the profile to `GET` and `PATCH`. — *S* — `PUT /auth/profile/` returns `405`, and the schema no longer advertises it. — Depends on: P1.1.
+- [x] **P1.7** Restrict the profile to `GET` and `PATCH`. — *S* — `PUT /auth/profile/` returns `405`, and the schema no longer advertises it. — Depends on: P1.1.
 - [ ] **P1.8** Fix the resource payloads. — *M* — conversation and message fields match what the contract and the frontend types declare, no field is sent that the frontend never reads, and `message_count` is declared once. — Depends on: P0.19.
 - [ ] **P1.9** Cut the legacy routes. — *S* — `/api/auth/` and `/api/chat/` return `404`, the OpenAPI schema lists only `/api/v1` paths, and the README and documentation mention no legacy path. — Depends on: P1.2, P1.7, frontend release.
 - [ ] **P1.10** Rewrite the Postman collection and environment. — *M* — every contract endpoint is covered, `conversation_id` is captured from the create response instead of being hardcoded, and pagination, 401, 404, 429 and the error envelope are asserted. — Depends on: P1.9.

@@ -131,7 +131,7 @@ The four default password validators apply, so a weak or common password is reje
 
 ### Update the profile
 
-`PATCH /api/auth/profile/` and `PUT /api/auth/profile/`, authentication required. `email` and `username` are writable, the rest is read-only. There is no confirmation step when the email changes. The contract keeps only `PATCH`.
+`PATCH /api/auth/profile/`, authentication required. `email` and `username` are writable, the rest is read-only. There is no confirmation step when the email changes. `PUT` returns `405`, the contract keeps only `PATCH`.
 
 ## Conversations
 
