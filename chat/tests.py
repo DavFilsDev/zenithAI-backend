@@ -84,6 +84,13 @@ class UuidPayloadTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(UUID(response.data['uuid']), self.conversation.uuid)
 
+    def test_detail_payload_message_count_matches_the_actual_count(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(f'/api/chat/conversations/{self.conversation.uuid}/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['message_count'], self.conversation.messages.count())
+        self.assertEqual(self.conversation.messages.count(), 1)
+
 
 class ListPayloadTests(APITestCase):
     def setUp(self):

@@ -100,7 +100,7 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = (permissions.IsAuthenticated,)
     
     def get_queryset(self):
-        return Conversation.objects.filter(user=self.request.user)
+        return Conversation.objects.filter(user=self.request.user).annotate(message_count=Count('messages'))
     
     @extend_schema(
         summary="Get conversation details",
