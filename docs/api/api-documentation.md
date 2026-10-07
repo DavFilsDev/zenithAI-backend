@@ -177,7 +177,24 @@ A **single** conversation embeds its full message list:
 
 ### List conversations
 
-`GET /api/chat/conversations/` returns a plain array, most recently updated first, one lean summary per conversation. A conversation created by sending a message is not listed here unless it exists in the table; it does, it was created by the same endpoint that sends the message, see below.
+`GET /api/chat/conversations/` returns a paginated page of lean summaries, most recently updated first. Every list endpoint paginates with the `{count, next, previous, results}` envelope, default `page_size` 20, and a client-supplied `page_size` is capped at 20.
+
+```json
+{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "results": [
+    {
+      "uuid": "3f7a2c1e-8b4d-4f0e-9a2c-1e8b4d4f0e9a",
+      "title": "My first conversation",
+      "created_at": "2026-03-03T10:00:00Z",
+      "updated_at": "2026-03-03T10:06:00Z",
+      "message_count": 2
+    }
+  ]
+}
+```
 
 ### Create a conversation
 
@@ -274,7 +291,6 @@ None of the following exists today. All of them are specified in [`docs/API_CONT
 | Capability | Contract path |
 |---|---|
 | Server-sent event streaming | `POST /api/v1/conversations/{uuid}/messages/stream/` |
-| Paginated lists | `{count, next, previous, results}`, page size 20 |
 | Versioned base path | `/api/v1/` |
 | Shared error envelope | `{"error": {"code", "message", "details"}}` |
 | Per-IP and per-user throttling, global daily cap | `429` with `Retry-After` |

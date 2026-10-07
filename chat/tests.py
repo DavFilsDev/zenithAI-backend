@@ -100,13 +100,16 @@ class ListPayloadTests(APITestCase):
     def test_list_payload_is_lean(self):
         response = self.client.get('/api/chat/conversations/')
         self.assertEqual(response.status_code, 200)
-        item = response.data[0]
+        item = response.data['results'][0]
         self.assertNotIn('messages', item)
         self.assertEqual(item['message_count'], 2)
         UUID(item['uuid'])
+        self.assertEqual(response.data['count'], 1)
+        self.assertIsNone(response.data['next'])
+        self.assertIsNone(response.data['previous'])
 
     def test_list_uses_a_constant_number_of_queries(self):
-        with self.assertNumQueries(1):
+        with self.assertNumQueries(2):
             response = self.client.get('/api/chat/conversations/')
         self.assertEqual(response.status_code, 200)
 
@@ -193,8 +196,8 @@ class NestedMessagesTests(APITestCase):
     def test_list_returns_the_conversation_messages(self):
         response = self.client.get(f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/')
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.data), 1)
-        self.assertEqual(response.data[0]['role'], 'user')
+        self.assertEqual(response.data['count'], 1)
+        self.assertEqual(response.data['results'][0]['role'], 'user')
 
     @patch('chat.views.gemini_service.generate_response', return_value='Hello back')
     def test_post_creates_both_messages_and_returns_the_assistant_message(self, mock_generate):
@@ -248,3 +251,30 @@ class NestedMessagesTests(APITestCase):
         self.assertEqual(response.data['error']['code'], 'llm_unavailable')
         self.assertEqual(self.conversation.messages.filter(role='assistant').count(), 0)
         self.assertEqual(self.conversation.messages.count(), 2)
+
+
+class PaginationTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='pages@example.com',
+            username='pages-user',
+            password='Str0ng-Passw0rd!42',
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_page_size_above_the_cap_is_capped_at_20(self):
+        for i in range(25):
+            Conversation.objects.create(user=self.user, title=f'Chat {i}')
+        response = self.client.get('/api/chat/conversations/', {'page_size': 100})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['count'], 25)
+        self.assertEqual(len(response.data['results']), 20)
+        self.assertIsNotNone(response.data['next'])
+
+    def test_empty_list_keeps_the_paginated_envelope(self):
+        response = self.client.get('/api/chat/conversations/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['count'], 0)
+        self.assertIsNone(response.data['next'])
+        self.assertIsNone(response.data['previous'])
+        self.assertEqual(response.data['results'], [])
