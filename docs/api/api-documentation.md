@@ -307,7 +307,7 @@ Errors use the shared envelope `{"error": {"code", "message", "details"}}`, with
 
 ## Trying it locally
 
-The Postman collection in this directory, `zenith-ai-api.postman_collection.json` with the environment `zenith-ai-api.postman_environment.json`, covers the endpoints that exist. It is not yet aligned with the contract: it uses `PUT` where the contract allows `PATCH` only, hardcodes `conversation_id` to `1`, and has no logout, health, messages, streaming or pagination requests. The gap list is in the improvement plan, phase P1.
+The Postman collection in this directory, `zenith-ai-api.postman_collection.json` with the environment `zenith-ai-api.postman_environment.json`, covers every implemented contract endpoint under `/api/v1`: registration, tokens, profile, logout, conversations, pagination, the nested messages resource and the health check. Requests run in order — register, login, create a conversation, then use the others — and `conversation_uuid` is captured from the create response instead of being hardcoded. Envelope errors are asserted for 400, 404, 405 and 401; sending a message needs a live Gemini key and accepts either `201` or a `503 llm_unavailable`. A live `429 rate_limited` cannot be produced yet: throttling is task P2.8, and the collection's rate-limit request asserts the `rate_limited` envelope only once such a response actually appears.
 
 The quickest manual check, with a fresh user:
 
