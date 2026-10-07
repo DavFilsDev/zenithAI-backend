@@ -3,7 +3,7 @@
 > **This contract is shared with the frontend repository and describes the TARGET state. Both repositories must keep an identical copy. Any change must be made in both.**
 
 Contract version: `v1`
-Status: target state, not yet implemented. The currently deployed API is documented in [`docs/api/api-documentation.md`](api/api-documentation.md).
+Status: partially implemented. Everything in §3 is live except streaming (`/conversations/{uuid}/messages/stream/` stays Planned); §9 usage limits and §10 multi-provider are planned. The currently deployed API is documented in [`docs/api/api-documentation.md`](api/api-documentation.md).
 
 ## 1. Product
 
@@ -167,3 +167,11 @@ Frontend:
 | `VITE_API_URL` | `http://localhost:8000/api/v1` |
 
 `VITE_WS_URL` does not exist: streaming is SSE, not WebSocket.
+
+## 12. Versioning and deprecation
+
+- The contract version is part of the URL: `v1` is the `/api/v1/` base path. A change that keeps `v1` keeps the same base path.
+- A change is **non-breaking** when it only adds a resource, an endpoint, an optional field or a new error code, and never removes, renames or reinterprets something that exists. Non-breaking changes stay on the current version.
+- Any other change is **breaking**: removing or renaming a field or endpoint, changing a payload shape, changing a status code or an error code, or changing the meaning of an existing value. A breaking change requires a new major version served at `/api/v2/`, and the previous version keeps serving unmodified for the announced deprecation period.
+- Every version change is announced in the changelog before it ships, and the deprecation of the previous version is recorded there.
+- This contract is copied into both the backend and the frontend repository: a version change updates both copies in the same release, and both repositories state the same contract version.

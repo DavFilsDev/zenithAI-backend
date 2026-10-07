@@ -114,6 +114,7 @@ backend/     settings and root URLconf
 users/       custom user model, registration, profile
 chat/        conversations, messages, LLM service
 docs/        contract, conventions, improvement plan, API documentation
+CHANGELOG.md API and behavior changes, versioning per the contract
 manage.py
 requirements.txt
 .env.example

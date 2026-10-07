@@ -191,7 +191,7 @@ Effort: **S** under half a day, **M** one to three days, **L** more than three d
 
 ### P1 — Migration to contract v1
 
-- [ ] **P1.1** Mount the `/api/v1/` namespace. — *M* — every contract path resolves under `/api/v1/`, and the OpenAPI `servers` entry points at `/api/v1`. — Depends on: P0.
+- [x] **P1.1** Mount the `/api/v1/` namespace. — *M* — every contract path resolves under `/api/v1/`, and the OpenAPI `servers` entry points at `/api/v1`. — Depends on: P0.
 - [x] **P1.2** Restructure chat as REST resources, with messages nested under a conversation. — *M* — `GET,POST /conversations/`, `GET,PATCH,DELETE /conversations/{uuid}/` and `GET,POST /conversations/{uuid}/messages/` all exist, and `POST /conversations/{uuid}/messages/` returns the complete assistant message. — Depends on: P1.1, P0.9.
 - [x] **P1.3** Enable pagination with a page size of 20 on every list endpoint. — *S* — list responses use the `{count, next, previous, results}` envelope and a client-supplied `page_size` above 20 is capped. — Depends on: P1.2.
 - [x] **P1.4** Add the shared error envelope through a custom DRF exception handler. — *M* — every error response, including validation, throttling, 404 and 500, matches `{"error": {"code", "message", "details"}}` with the codes defined in the contract. — Depends on: nothing.
@@ -202,7 +202,7 @@ Effort: **S** under half a day, **M** one to three days, **L** more than three d
 - [x] **P1.9** Cut the legacy routes. — *S* — `/api/auth/` and `/api/chat/` return `404`, the OpenAPI schema lists only `/api/v1` paths, and the README and documentation mention no legacy path. — Depends on: P1.2, P1.7 (the frontend release dependency was waived by decision: the frontend follows the backend in a later pass).
 - [x] **P1.10** Rewrite the Postman collection and environment. — *M* — every contract endpoint is covered, `conversation_id` is captured from the create response instead of being hardcoded, and pagination, 401, 404, 429 and the error envelope are asserted. — Depends on: P1.9. (The 429 assertion is conditional and opened with P2.8 throttling, which is not implemented yet, by decision.)
 - [x] **P1.11** Move logout to the contract path. — *S* — `POST /api/v1/auth/logout/` blacklists the refresh token, the frontend logout call is updated in the same release. — Depends on: P0.8, P1.1.
-- [ ] **P1.12** State the versioning and deprecation policy. — *S* — the contract documents that a breaking change requires `/api/v2/`, a notice in the changelog, and an update to both repository copies. — Depends on: P1.9.
+- [x] **P1.12** State the versioning and deprecation policy. — *S* — the contract documents that a breaking change requires `/api/v2/`, a notice in the changelog, and an update to both repository copies. — Depends on: P1.9.
 
 ### P2 — LLM abstraction, free provider, streaming and limits
 
