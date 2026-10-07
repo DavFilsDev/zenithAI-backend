@@ -93,6 +93,13 @@ class TokenSecurityTests(APITestCase):
         refresh = self.client.post(reverse('token_refresh'), {'refresh': self.refresh})
         self.assertEqual(refresh.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    def test_logout_on_the_contract_path_blacklists_the_token(self):
+        response = self.client.post('/api/v1/auth/logout/', {'refresh': self.refresh})
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        refresh = self.client.post('/api/v1/auth/token/refresh/', {'refresh': self.refresh})
+        self.assertEqual(refresh.status_code, status.HTTP_401_UNAUTHORIZED)
+
     def test_logout_rejects_a_missing_refresh_token(self):
         response = self.client.post(reverse('logout'), {})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)

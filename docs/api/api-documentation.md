@@ -18,7 +18,7 @@ Every endpoint requires a bearer token except registration and token issuance.
 Authorization: Bearer <access_token>
 ```
 
-Access tokens are valid for 15 minutes, refresh tokens for 7 days. Refresh tokens rotate on use and the rotated token is blacklisted, so a refresh token can only be used once. A logout endpoint (`POST /api/auth/logout/`) blacklists the presented refresh token immediately.
+Access tokens are valid for 15 minutes, refresh tokens for 7 days. Refresh tokens rotate on use and the rotated token is blacklisted, so a refresh token can only be used once. A logout endpoint (`POST /api/v1/auth/logout/`) blacklists the presented refresh token immediately.
 
 ## Endpoints
 
@@ -105,7 +105,7 @@ The four default password validators apply, so a weak or common password is reje
 
 ### Logout
 
-`POST /api/auth/logout/`, no authentication.
+`POST /api/v1/auth/logout/`, no authentication. (The legacy alias `/api/auth/logout/` still serves until the legacy cut.)
 
 ```json
 {
@@ -113,7 +113,7 @@ The four default password validators apply, so a weak or common password is reje
 }
 ```
 
-`204 No Content`. The presented refresh token is blacklisted and can no longer be used: any later call to `POST /api/auth/token/refresh/` with it returns `401`.
+`204 No Content`. The presented refresh token is blacklisted and can no longer be used: any later call to `POST /api/v1/auth/token/refresh/` with it returns `401`.
 
 `400 Bad Request` when the refresh token is missing or malformed.
 
@@ -259,7 +259,6 @@ None of the following exists today. All of them are specified in [`docs/API_CONT
 
 | Capability | Contract path |
 |---|---|
-| Logout with token blacklisting | `POST /api/v1/auth/logout/` |
 | Messages as a sub-resource | `GET,POST /api/v1/conversations/{uuid}/messages/` |
 | Server-sent event streaming | `POST /api/v1/conversations/{uuid}/messages/stream/` |
 | Paginated lists | `{count, next, previous, results}`, page size 20 |

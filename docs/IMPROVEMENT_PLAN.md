@@ -201,7 +201,7 @@ Effort: **S** under half a day, **M** one to three days, **L** more than three d
 - [ ] **P1.8** Fix the resource payloads. — *M* — conversation and message fields match what the contract and the frontend types declare, no field is sent that the frontend never reads, and `message_count` is declared once. — Depends on: P0.19.
 - [ ] **P1.9** Cut the legacy routes. — *S* — `/api/auth/` and `/api/chat/` return `404`, the OpenAPI schema lists only `/api/v1` paths, and the README and documentation mention no legacy path. — Depends on: P1.2, P1.7, frontend release.
 - [ ] **P1.10** Rewrite the Postman collection and environment. — *M* — every contract endpoint is covered, `conversation_id` is captured from the create response instead of being hardcoded, and pagination, 401, 404, 429 and the error envelope are asserted. — Depends on: P1.9.
-- [ ] **P1.11** Move logout to the contract path. — *S* — `POST /api/v1/auth/logout/` blacklists the refresh token, the frontend logout call is updated in the same release. — Depends on: P0.8, P1.1.
+- [x] **P1.11** Move logout to the contract path. — *S* — `POST /api/v1/auth/logout/` blacklists the refresh token, the frontend logout call is updated in the same release. — Depends on: P0.8, P1.1.
 - [ ] **P1.12** State the versioning and deprecation policy. — *S* — the contract documents that a breaking change requires `/api/v2/`, a notice in the changelog, and an update to both repository copies. — Depends on: P1.9.
 
 ### P2 — LLM abstraction, free provider, streaming and limits
