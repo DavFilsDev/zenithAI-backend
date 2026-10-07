@@ -75,9 +75,9 @@ Never commit `.env`. It is already ignored.
 
 With the server running:
 
-- Swagger UI: <http://localhost:8000/api/docs/>
-- ReDoc: <http://localhost:8000/api/redoc/>
-- OpenAPI schema: <http://localhost:8000/api/schema/>
+- Swagger UI: <http://localhost:8000/api/v1/docs/>
+- ReDoc: <http://localhost:8000/api/v1/redoc/>
+- OpenAPI schema: <http://localhost:8000/api/v1/schema/>
 
 The generated schema is the source of truth for what exists. The hand-written reference is [`docs/api/api-documentation.md`](docs/api/api-documentation.md), and the target state is [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md).
 
@@ -99,7 +99,7 @@ python manage.py spectacular --file schema.yml
 | GET, PATCH, PUT, DELETE | `/api/chat/conversations/{id}/` | Yes |
 | POST | `/api/chat/chat/` | Yes |
 | POST | `/api/chat/chat/{conversation_id}/` | Yes |
-| GET | `/api/schema/`, `/api/docs/`, `/api/redoc/` | No |
+| GET | `/api/v1/schema/`, `/api/v1/docs/`, `/api/v1/redoc/` | No |
 | GET | `/admin/` | Staff |
 
 Authentication is a bearer token: `Authorization: Bearer <access_token>`. Access tokens last 15 minutes, refresh tokens 7 days, rotate on use and the rotated token is blacklisted.

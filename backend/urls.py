@@ -10,8 +10,13 @@ urlpatterns = [
     path('api/v1/chat/', include('chat.urls')),
     path('api/v1/health/', include('health.urls')),
 
-    # OpenAPI documentation
-    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
-    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
-    path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+    # Contract documentation
+    path('api/v1/schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('api/v1/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('api/v1/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+
+    # Legacy documentation, removed with the legacy routes in P1.9
+    path('api/schema/', SpectacularAPIView.as_view(), name='legacy-schema'),
+    path('api/docs/', SpectacularSwaggerView.as_view(url_name='legacy-schema'), name='legacy-swagger-ui'),
+    path('api/redoc/', SpectacularRedocView.as_view(url_name='legacy-schema'), name='legacy-redoc'),
 ]
