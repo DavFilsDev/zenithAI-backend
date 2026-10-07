@@ -5,7 +5,7 @@ from rest_framework.views import APIView
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, ConversationListSerializer, MessageSerializer
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
-from .services import gemini_service, LLMUnavailableError
+from .services import gemini_service, LLMUnavailableError, generate_assistant_reply
 import logging
 
 logger = logging.getLogger(__name__)
@@ -96,6 +96,7 @@ class ConversationListView(generics.ListCreateAPIView):
 class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ConversationSerializer
     lookup_field = 'uuid'
+    http_method_names = ('get', 'patch', 'delete', 'head', 'options')
     permission_classes = (permissions.IsAuthenticated,)
     
     def get_queryset(self):
@@ -150,31 +151,6 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
     )
     def get(self, request, *args, **kwargs):
         return self.retrieve(request, *args, **kwargs)
-    
-    @extend_schema(
-        summary="Update conversation",
-        description="Update the title of a conversation",
-        tags=['Chat'],
-        request=ConversationSerializer,
-        responses={
-            200: ConversationSerializer,
-            400: OpenApiResponse(description="Invalid data"),
-            401: OpenApiResponse(description="Authentication required"),
-            403: OpenApiResponse(description="Permission denied"),
-            404: OpenApiResponse(description="Conversation not found"),
-        },
-        examples=[
-            OpenApiExample(
-                'Update Request',
-                value={
-                    'title': 'Updated Conversation Title'
-                },
-                request_only=True,
-            ),
-        ]
-    )
-    def put(self, request, *args, **kwargs):
-        return self.update(request, *args, **kwargs)
     
     @extend_schema(
         summary="Delete conversation",
@@ -339,6 +315,7 @@ class ChatView(APIView):
             ).first()
             if not conversation:
                 raise exceptions.NotFound('Conversation not found')
+            is_new = False
         else:
             # Create new conversation with first message as title
             title = user_message[:50] + "..." if len(user_message) > 50 else user_message
@@ -346,32 +323,10 @@ class ChatView(APIView):
                 user=request.user,
                 title=title
             )
-        
-        user_msg = Message.objects.create(
-            conversation=conversation,
-            role='user',
-            content=user_message
-        )
-        
-        try:
-            # Conversation history, excluding the message just saved
-            messages = Message.objects.filter(conversation=conversation).order_by('created_at')
-            chat_history = [{'role': msg.role, 'content': msg.content} for msg in messages if msg.id != user_msg.id]
-            
-            ai_response = gemini_service.generate_response(user_message, chat_history)
-            
-            ai_msg = Message.objects.create(
-                conversation=conversation,
-                role='assistant',
-                content=ai_response
-            )
-            
-            serializer = MessageSerializer(ai_msg)
-            
-            # Return 201 if new conversation was created, 200 otherwise
-            status_code = status.HTTP_201_CREATED if not conversation_id else status.HTTP_200_OK
-            return Response(serializer.data, status=status_code)
+            is_new = True
 
+        try:
+            ai_msg = generate_assistant_reply(conversation, user_message)
         except LLMUnavailableError as e:
             return Response(
                 {'error': {'code': 'llm_unavailable', 'message': str(e), 'details': {}}},
@@ -380,3 +335,78 @@ class ChatView(APIView):
         except Exception as e:
             logger.error(f"Chat error for user {request.user.id}: {str(e)}")
             raise
+
+        serializer = MessageSerializer(ai_msg)
+
+        # Return 201 if new conversation was created, 200 otherwise
+        status_code = status.HTTP_201_CREATED if is_new else status.HTTP_200_OK
+        return Response(serializer.data, status=status_code)
+
+
+class MessageListCreateView(generics.ListCreateAPIView):
+    serializer_class = MessageSerializer
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def _get_owned_conversation(self):
+        conversation = Conversation.objects.filter(
+            uuid=self.kwargs['conversation_id'],
+            user=self.request.user,
+        ).first()
+        if conversation is None:
+            raise exceptions.NotFound('Conversation not found')
+        return conversation
+
+    def get_queryset(self):
+        return Message.objects.filter(conversation=self._get_owned_conversation()).order_by('created_at')
+
+    @extend_schema(
+        summary="List messages of a conversation",
+        description="Retrieve all messages of a conversation owned by the authenticated user",
+        tags=['Chat'],
+        responses={
+            200: OpenApiResponse(
+                response=MessageSerializer(many=True),
+                description="Messages of the conversation"
+            ),
+            401: OpenApiResponse(description="Authentication required"),
+            404: OpenApiResponse(description="Conversation not found or not owned by the caller"),
+        },
+    )
+    def get(self, request, *args, **kwargs):
+        return self.list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Send a message in a conversation",
+        description="Send a message inside an existing conversation and return the complete assistant message",
+        tags=['Chat'],
+        request=OpenApiExample(
+            'Message Request',
+            value={'message': 'What is the capital of France?'},
+        ),
+        responses={
+            201: OpenApiResponse(
+                response=MessageSerializer,
+                description="Assistant message created"
+            ),
+            400: OpenApiResponse(description="Message field is required"),
+            401: OpenApiResponse(description="Authentication required"),
+            404: OpenApiResponse(description="Conversation not found or not owned by the caller"),
+            503: OpenApiResponse(description="The AI provider is unavailable"),
+        },
+    )
+    def post(self, request, *args, **kwargs):
+        user_message = request.data.get('message')
+        if not user_message:
+            raise exceptions.ValidationError('Message is required')
+        conversation = self._get_owned_conversation()
+        try:
+            ai_msg = generate_assistant_reply(conversation, user_message)
+        except LLMUnavailableError as e:
+            return Response(
+                {'error': {'code': 'llm_unavailable', 'message': str(e), 'details': {}}},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        except Exception as e:
+            logger.error(f"Chat error for user {request.user.id}: {str(e)}")
+            raise
+        return Response(MessageSerializer(ai_msg).data, status=status.HTTP_201_CREATED)

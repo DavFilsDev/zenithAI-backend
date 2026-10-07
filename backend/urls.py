@@ -7,7 +7,7 @@ urlpatterns = [
     path('api/auth/', include('users.urls')),
     path('api/chat/', include('chat.urls')),
     path('api/v1/auth/', include('users.urls')),
-    path('api/v1/chat/', include('chat.urls')),
+    path('api/v1/chat/', include('chat.urls_v1')),
     path('api/v1/health/', include('health.urls')),
 
     # Contract documentation

@@ -177,3 +177,74 @@ class ErrorEnvelopeTests(APITestCase):
         response = self.client.post('/api/chat/chat/', {'message': 'Hello'})
         self.assertEqual(response.status_code, 500)
         self.assertEqual(response.data['error']['code'], 'server_error')
+
+
+class NestedMessagesTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='nested@example.com',
+            username='nested-user',
+            password='Str0ng-Passw0rd!42',
+        )
+        self.conversation = Conversation.objects.create(user=self.user, title='Nested chat')
+        Message.objects.create(conversation=self.conversation, role='user', content='Hi')
+        self.client.force_authenticate(user=self.user)
+
+    def test_list_returns_the_conversation_messages(self):
+        response = self.client.get(f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.data), 1)
+        self.assertEqual(response.data[0]['role'], 'user')
+
+    @patch('chat.views.gemini_service.generate_response', return_value='Hello back')
+    def test_post_creates_both_messages_and_returns_the_assistant_message(self, mock_generate):
+        response = self.client.post(
+            f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/',
+            {'message': 'How are you?'},
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data['role'], 'assistant')
+        self.assertEqual(response.data['content'], 'Hello back')
+        self.assertEqual(self.conversation.messages.count(), 3)
+        self.assertEqual(self.conversation.messages.filter(role='user').count(), 2)
+
+    def test_post_requires_a_message(self):
+        response = self.client.post(
+            f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/',
+            {},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['error']['code'], 'validation_error')
+        self.assertEqual(response.data['error']['message'], 'Message is required')
+
+    def test_list_unknown_conversation_returns_not_found(self):
+        response = self.client.get(f'/api/v1/chat/conversations/{uuid4()}/messages/')
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data['error']['code'], 'not_found')
+
+    def test_post_unknown_conversation_returns_not_found(self):
+        response = self.client.post(f'/api/v1/chat/conversations/{uuid4()}/messages/', {'message': 'Hi'})
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data['error']['code'], 'not_found')
+
+    def test_put_on_conversation_detail_returns_method_not_allowed(self):
+        response = self.client.put(
+            f'/api/v1/chat/conversations/{self.conversation.uuid}/',
+            {'title': 'Renamed'},
+        )
+        self.assertEqual(response.status_code, 405)
+        self.assertEqual(response.data['error']['code'], 'method_not_allowed')
+
+    @patch(
+        'chat.views.gemini_service.generate_response',
+        side_effect=LLMUnavailableError('The AI service is temporarily unavailable. Please try again later.'),
+    )
+    def test_post_provider_failure_returns_503_and_persists_only_the_user_message(self, mock_generate):
+        response = self.client.post(
+            f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/',
+            {'message': 'Hello'},
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.data['error']['code'], 'llm_unavailable')
+        self.assertEqual(self.conversation.messages.filter(role='assistant').count(), 0)
+        self.assertEqual(self.conversation.messages.count(), 2)

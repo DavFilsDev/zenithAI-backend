@@ -192,7 +192,7 @@ Effort: **S** under half a day, **M** one to three days, **L** more than three d
 ### P1 — Migration to contract v1
 
 - [ ] **P1.1** Mount the `/api/v1/` namespace. — *M* — every contract path resolves under `/api/v1/`, and the OpenAPI `servers` entry points at `/api/v1`. — Depends on: P0.
-- [ ] **P1.2** Restructure chat as REST resources, with messages nested under a conversation. — *M* — `GET,POST /conversations/`, `GET,PATCH,DELETE /conversations/{uuid}/` and `GET,POST /conversations/{uuid}/messages/` all exist, and `POST /conversations/{uuid}/messages/` returns the complete assistant message. — Depends on: P1.1, P0.9.
+- [x] **P1.2** Restructure chat as REST resources, with messages nested under a conversation. — *M* — `GET,POST /conversations/`, `GET,PATCH,DELETE /conversations/{uuid}/` and `GET,POST /conversations/{uuid}/messages/` all exist, and `POST /conversations/{uuid}/messages/` returns the complete assistant message. — Depends on: P1.1, P0.9.
 - [ ] **P1.3** Enable pagination with a page size of 20 on every list endpoint. — *S* — list responses use the `{count, next, previous, results}` envelope and a client-supplied `page_size` above 20 is capped. — Depends on: P1.2.
 - [x] **P1.4** Add the shared error envelope through a custom DRF exception handler. — *M* — every error response, including validation, throttling, 404 and 500, matches `{"error": {"code", "message", "details"}}` with the codes defined in the contract. — Depends on: nothing.
 - [x] **P1.5** Add `GET /api/v1/health/`. — *S* — the endpoint is public, returns `200` with the database check result, and does not require a token. — Depends on: P1.1.

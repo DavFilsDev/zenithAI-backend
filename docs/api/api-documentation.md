@@ -195,18 +195,32 @@ A **single** conversation embeds its full message list:
 
 | Method | Path | Result |
 |---|---|---|
-| `GET` | `/api/chat/conversations/{uuid}/` | `200` with the messages |
-| `PATCH` | `/api/chat/conversations/{uuid}/` | `200`, `title` only |
-| `PUT` | `/api/chat/conversations/{uuid}/` | `200`, `title` only |
-| `DELETE` | `/api/chat/conversations/{uuid}/` | `204`, messages cascade |
+| `GET` | `/api/v1/chat/conversations/{uuid}/` | `200` with the messages |
+| `PATCH` | `/api/v1/chat/conversations/{uuid}/` | `200`, `title` only |
+| `DELETE` | `/api/v1/chat/conversations/{uuid}/` | `204`, messages cascade |
+
+`PUT` returns `405`: the contract never defined it on a conversation.
 
 A conversation owned by another user returns `404`, never `403`, because the queryset is filtered by the authenticated user.
 
+### Messages of a conversation
+
+`GET,POST /api/v1/chat/conversations/{uuid}/messages/`, authentication required.
+
+- `GET`: every message of the conversation, oldest first, message objects only.
+- `POST` with `{"message": "..."}`: stores the user message, calls the provider, stores the assistant reply and returns it with `201`. Same persistence rule as the chat endpoint: on a provider failure nothing is stored as an assistant message.
+
+| Code | When |
+|---|---|
+| `400 Bad Request` | `validation_error` when `message` is missing |
+| `404 Not Found` | unknown conversation, or not owned by the caller |
+| `503 Service Unavailable` | provider down (`llm_unavailable` envelope) |
+
 ## Sending a message
 
-Two routes, both synchronous: the request stays open until the model has finished answering, and the complete assistant message comes back in the response.
+Both routes are synchronous: the request stays open until the model has finished answering, and the complete assistant message comes back in the response.
 
-`POST /api/chat/chat/`, or `POST /api/chat/chat/{conversation_id}/` to continue an existing conversation.
+The contract path inside an existing conversation is `POST /api/v1/chat/conversations/{uuid}/messages/` (see above). The legacy routes below still serve until the legacy cut: `POST /api/chat/chat/`, or `POST /api/chat/chat/{conversation_id}/` to continue an existing conversation.
 
 ```json
 {
@@ -259,7 +273,6 @@ None of the following exists today. All of them are specified in [`docs/API_CONT
 
 | Capability | Contract path |
 |---|---|
-| Messages as a sub-resource | `GET,POST /api/v1/conversations/{uuid}/messages/` |
 | Server-sent event streaming | `POST /api/v1/conversations/{uuid}/messages/stream/` |
 | Paginated lists | `{count, next, previous, results}`, page size 20 |
 | Versioned base path | `/api/v1/` |
