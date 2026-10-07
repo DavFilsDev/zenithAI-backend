@@ -9,11 +9,6 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 User = get_user_model()
 
 class CustomTokenRefreshView(TokenRefreshView):
-    """
-    Refresh JWT token endpoint.
-    
-    Takes a refresh token and returns a new access token.
-    """
     
     @extend_schema(
         summary="Refresh access token",
@@ -52,11 +47,6 @@ class CustomTokenObtainPairView(TokenObtainPairView):
         return super().post(request, *args, **kwargs)
 
 class RegisterView(generics.CreateAPIView):
-    """
-    Register a new user account.
-
-    Returns the created user data upon success.
-    """
     queryset = User.objects.all()
     permission_classes = (permissions.AllowAny,)
     serializer_class = RegisterSerializer
@@ -93,19 +83,10 @@ class RegisterView(generics.CreateAPIView):
         return super().post(request, *args, **kwargs)
 
 class UserProfileView(generics.RetrieveUpdateAPIView):
-    """
-    Retrieve or update the authenticated user's profile.
-    
-    **GET**: Returns the profile of the currently authenticated user.
-    **PUT/PATCH**: Updates the user's profile information.
-    
-    Requires authentication via JWT token in Authorization header.
-    """
     serializer_class = UserSerializer
     permission_classes = (permissions.IsAuthenticated,)
     
     def get_object(self):
-        """Return the current authenticated user"""
         return self.request.user
     
     @extend_schema(
@@ -134,7 +115,6 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         ]
     )
     def get(self, request, *args, **kwargs):
-        """Get current user profile"""
         return self.retrieve(request, *args, **kwargs)
     
     @extend_schema(
@@ -159,7 +139,6 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         ]
     )
     def put(self, request, *args, **kwargs):
-        """Update current user profile"""
         return self.update(request, *args, **kwargs)
     
     @extend_schema(
@@ -174,5 +153,4 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         }
     )
     def patch(self, request, *args, **kwargs):
-        """Partially update current user profile"""
         return self.partial_update(request, *args, **kwargs)

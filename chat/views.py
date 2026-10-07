@@ -11,26 +11,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 class ConversationListView(generics.ListCreateAPIView):
-    """
-    List all conversations or create a new one for the authenticated user.
-    
-    **GET**: Returns a list of all conversations belonging to the current user.
-    - Ordered by most recently updated (newest first)
-    - Includes message count for each conversation
-    
-    **POST**: Creates a new conversation with the provided title.
-    - The conversation is automatically associated with the current user
-    - Returns the created conversation with id and timestamps
-    """
     serializer_class = ConversationSerializer
     permission_classes = (permissions.IsAuthenticated,)
     
     def get_queryset(self):
-        """Filter conversations to only show the current user's conversations"""
         return Conversation.objects.filter(user=self.request.user)
     
     def perform_create(self, serializer):
-        """Set the user when creating a new conversation"""
         serializer.save(user=self.request.user)
     
     @extend_schema(
@@ -64,7 +51,6 @@ class ConversationListView(generics.ListCreateAPIView):
         ]
     )
     def get(self, request, *args, **kwargs):
-        """List user's conversations"""
         return self.list(request, *args, **kwargs)
     
     @extend_schema(
@@ -107,28 +93,13 @@ class ConversationListView(generics.ListCreateAPIView):
         ]
     )
     def post(self, request, *args, **kwargs):
-        """Create a new conversation"""
         return self.create(request, *args, **kwargs)
 
 class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """
-    Retrieve, update, or delete a specific conversation.
-    
-    **GET**: Returns the conversation with all its messages.
-    - Messages are ordered chronologically
-    - Includes message count and full message history
-    
-    **PUT/PATCH**: Update the conversation title.
-    
-    **DELETE**: Delete the conversation and all its messages.
-    
-    Note: Users can only access their own conversations.
-    """
     serializer_class = ConversationSerializer
     permission_classes = (permissions.IsAuthenticated,)
     
     def get_queryset(self):
-        """Ensure users can only access their own conversations"""
         return Conversation.objects.filter(user=self.request.user)
     
     @extend_schema(
@@ -164,14 +135,12 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
                             'id': 1,
                             'role': 'user',
                             'content': 'What is Django?',
-                            'tokens': 0,
                             'created_at': '2026-03-03T10:04:00Z'
                         },
                         {
                             'id': 2,
                             'role': 'assistant',
                             'content': 'Django is a Python web framework...',
-                            'tokens': 0,
                             'created_at': '2026-03-03T10:04:01Z'
                         }
                     ]
@@ -181,7 +150,6 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
         ]
     )
     def get(self, request, *args, **kwargs):
-        """Get conversation details"""
         return self.retrieve(request, *args, **kwargs)
     
     @extend_schema(
@@ -207,7 +175,6 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
         ]
     )
     def put(self, request, *args, **kwargs):
-        """Update conversation title"""
         return self.update(request, *args, **kwargs)
     
     @extend_schema(
@@ -230,7 +197,6 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
         }
     )
     def delete(self, request, *args, **kwargs):
-        """Delete conversation"""
         return self.destroy(request, *args, **kwargs)
     
     @extend_schema(
@@ -256,24 +222,9 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
         ]
     )
     def patch(self, request, *args, **kwargs):
-        """Partially update conversation title"""
         return self.partial_update(request, *args, **kwargs)
 
 class ChatView(APIView):
-    """
-    Handle chat messages and AI interactions using Google Gemini.
-    
-    This endpoint processes user messages and returns AI responses.
-    It can create new conversations or continue existing ones.
-    
-    **Flow:**
-    1. Receive user message
-    2. Find or create conversation
-    3. Save user message to database
-    4. Generate AI response using Google Gemini
-    5. Save AI response
-    6. Return AI message data
-    """
     permission_classes = (permissions.IsAuthenticated,)
     
     @extend_schema(
@@ -320,7 +271,6 @@ class ChatView(APIView):
                             'id': 1,
                             'role': 'assistant',
                             'content': 'The capital of France is Paris. It is known as the "City of Light" and is famous for the Eiffel Tower, Louvre Museum, and Notre-Dame Cathedral.',
-                            'tokens': 0,
                             'created_at': '2026-03-03T10:30:00Z'
                         }
                     )
@@ -379,21 +329,10 @@ class ChatView(APIView):
         ]
     )
     def post(self, request, conversation_id=None):
-        """
-        Process a chat message and return AI response from Google Gemini.
-        
-        Args:
-            request: HTTP request object containing message data
-            conversation_id: Optional ID of existing conversation
-            
-        Returns:
-            Response: AI message data or error message
-        """
         user_message = request.data.get('message')
         if not user_message:
             return Response({'error': 'Message is required'}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Get or create conversation
         if conversation_id:
             conversation = Conversation.objects.filter(
                 id=conversation_id, 
@@ -409,7 +348,6 @@ class ChatView(APIView):
                 title=title
             )
         
-        # Save user message
         user_msg = Message.objects.create(
             conversation=conversation,
             role='user',
@@ -417,15 +355,12 @@ class ChatView(APIView):
         )
         
         try:
-            # Get conversation history for context (excluding the current message we just saved)
+            # Conversation history, excluding the message just saved
             messages = Message.objects.filter(conversation=conversation).order_by('created_at')
-            # Build chat history for context
             chat_history = [{'role': msg.role, 'content': msg.content} for msg in messages if msg.id != user_msg.id]
             
-            # Generate AI response using Google Gemini
             ai_response = gemini_service.generate_response(user_message, chat_history)
             
-            # Save AI response
             ai_msg = Message.objects.create(
                 conversation=conversation,
                 role='assistant',

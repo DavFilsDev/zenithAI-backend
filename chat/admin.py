@@ -5,7 +5,7 @@ class MessageInline(admin.TabularInline):
     model = Message
     extra = 0
     readonly_fields = ('created_at',)
-    fields = ('role', 'content', 'tokens', 'created_at')
+    fields = ('role', 'content', 'created_at')
 
 @admin.register(Conversation)
 class ConversationAdmin(admin.ModelAdmin):
@@ -21,7 +21,7 @@ class ConversationAdmin(admin.ModelAdmin):
 
 @admin.register(Message)
 class MessageAdmin(admin.ModelAdmin):
-    list_display = ('id', 'conversation', 'role', 'short_content', 'tokens', 'created_at')
+    list_display = ('id', 'conversation', 'role', 'short_content', 'created_at')
     list_filter = ('role', 'created_at')
     search_fields = ('content', 'conversation__title', 'conversation__user__email')
     readonly_fields = ('created_at',)
