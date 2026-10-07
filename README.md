@@ -91,20 +91,21 @@ python manage.py spectacular --file schema.yml
 
 | Method | Endpoint | Authentication |
 |---|---|---|
-| POST | `/api/auth/register/` | No |
-| POST | `/api/auth/token/` | No |
-| POST | `/api/auth/token/refresh/` | No |
-| GET, PATCH | `/api/auth/profile/` | Yes |
-| GET, POST | `/api/chat/conversations/` | Yes |
-| GET, PATCH, PUT, DELETE | `/api/chat/conversations/{id}/` | Yes |
-| POST | `/api/chat/chat/` | Yes |
-| POST | `/api/chat/chat/{conversation_id}/` | Yes |
+| POST | `/api/v1/auth/register/` | No |
+| POST | `/api/v1/auth/token/` | No |
+| POST | `/api/v1/auth/token/refresh/` | No |
+| POST | `/api/v1/auth/logout/` | No |
+| GET, PATCH | `/api/v1/auth/profile/` | Yes |
+| GET, POST | `/api/v1/chat/conversations/` | Yes |
+| GET, PATCH, DELETE | `/api/v1/chat/conversations/{uuid}/` | Yes |
+| GET, POST | `/api/v1/chat/conversations/{uuid}/messages/` | Yes |
+| GET | `/api/v1/health/` | No |
 | GET | `/api/v1/schema/`, `/api/v1/docs/`, `/api/v1/redoc/` | No |
 | GET | `/admin/` | Staff |
 
 Authentication is a bearer token: `Authorization: Bearer <access_token>`. Access tokens last 15 minutes, refresh tokens 7 days, rotate on use and the rotated token is blacklisted.
 
-Conversation and message ids are UUID strings, lists are not paginated, and there is no streaming and no throttling yet. The full list of what is missing is in the improvement plan.
+Conversation and message ids are UUID strings, list endpoints are paginated with a page size of 20, and there is no streaming and no throttling yet. The full list of what is missing is in the improvement plan.
 
 ## Project structure
 
@@ -124,17 +125,18 @@ requirements.txt
 python manage.py test
 ```
 
-The suite lives in `users/tests.py` and `chat/tests.py`: token payloads, refresh-token blacklisting, logout, conversation and message serialization. Expanding it to full coverage is task P3.6 of the improvement plan.
+The suite lives in `users/tests.py`, `chat/tests.py`, `health/tests.py` and `backend/tests.py`: token payloads, refresh-token blacklisting, logout, conversation and message serialization, error envelopes, pagination and schemas. Expanding it to full coverage is task P3.6 of the improvement plan.
 
 ## Status & Roadmap
 
 Implemented today:
 
-- Registration, token issuance, token refresh, profile read and update
-- Refresh-token rotation with blacklisting, 15-minute access tokens, logout
-- Conversation creation, listing, read, update, delete
+- Registration, token issuance, token refresh, logout, profile read and update
+- Refresh-token rotation with blacklisting and 15-minute access tokens
+- Conversation and message CRUD with UUID identifiers, paginated lists
 - Message exchange with a server-side Gemini key
-- Swagger UI, ReDoc and OpenAPI schema
+- Health check, shared error envelope, Swagger UI, ReDoc and OpenAPI schema
+- All endpoints under the versioned base path `/api/v1`
 
 Planned, in the order of the roadmap:
 

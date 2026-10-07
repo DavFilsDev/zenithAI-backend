@@ -29,21 +29,21 @@ Status legend: **Implemented** = available today, **Planned** = described by thi
 
 | Method | Path | Auth | Status | Currently served at |
 |---|---|---|---|---|
-| POST | `/auth/register/` | No | Implemented | `POST /api/auth/register/` |
-| POST | `/auth/token/` | No | Implemented | `POST /api/auth/token/` |
-| POST | `/auth/token/refresh/` | No | Implemented | `POST /api/auth/token/refresh/` |
-| POST | `/auth/logout/` | Yes | Planned | — |
-| GET | `/auth/profile/` | Yes | Implemented | `GET /api/auth/profile/` |
-| PATCH | `/auth/profile/` | Yes | Implemented | `PATCH /api/auth/profile/` |
-| GET | `/conversations/` | Yes | Implemented | `GET /api/chat/conversations/` (unpaginated) |
-| POST | `/conversations/` | Yes | Implemented | `POST /api/chat/conversations/` |
-| GET | `/conversations/{uuid}/` | Yes | Implemented | `GET /api/chat/conversations/{id}/` (integer id) |
-| PATCH | `/conversations/{uuid}/` | Yes | Implemented | `PATCH /api/chat/conversations/{id}/` |
-| DELETE | `/conversations/{uuid}/` | Yes | Implemented | `DELETE /api/chat/conversations/{id}/` |
-| GET | `/conversations/{uuid}/messages/` | Yes | Planned | — (only inside the conversation payload today) |
-| POST | `/conversations/{uuid}/messages/` | Yes | Planned | `POST /api/chat/chat/{id}/` |
+| POST | `/auth/register/` | No | Implemented | `POST /api/v1/auth/register/` |
+| POST | `/auth/token/` | No | Implemented | `POST /api/v1/auth/token/` |
+| POST | `/auth/token/refresh/` | No | Implemented | `POST /api/v1/auth/token/refresh/` |
+| POST | `/auth/logout/` | No | Implemented | `POST /api/v1/auth/logout/` |
+| GET | `/auth/profile/` | Yes | Implemented | `GET /api/v1/auth/profile/` |
+| PATCH | `/auth/profile/` | Yes | Implemented | `PATCH /api/v1/auth/profile/` |
+| GET | `/conversations/` | Yes | Implemented | `GET /api/v1/chat/conversations/` (paginated, page size 20) |
+| POST | `/conversations/` | Yes | Implemented | `POST /api/v1/chat/conversations/` |
+| GET | `/conversations/{uuid}/` | Yes | Implemented | `GET /api/v1/chat/conversations/{uuid}/` |
+| PATCH | `/conversations/{uuid}/` | Yes | Implemented | `PATCH /api/v1/chat/conversations/{uuid}/` |
+| DELETE | `/conversations/{uuid}/` | Yes | Implemented | `DELETE /api/v1/chat/conversations/{uuid}/` |
+| GET | `/conversations/{uuid}/messages/` | Yes | Implemented | `GET /api/v1/chat/conversations/{uuid}/messages/` |
+| POST | `/conversations/{uuid}/messages/` | Yes | Implemented | `POST /api/v1/chat/conversations/{uuid}/messages/` |
 | POST | `/conversations/{uuid}/messages/stream/` | Yes | Planned | — |
-| GET | `/health/` | No | Planned | — |
+| GET | `/health/` | No | Implemented | `GET /api/v1/health/` |
 
 ### 3.1 Method set
 

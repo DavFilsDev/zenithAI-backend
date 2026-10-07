@@ -6,7 +6,7 @@ Product constraints, applied to every task below: 100% free, open to everyone, n
 
 ## 1. Audit findings
 
-Every claim below was read in the code, not inferred from the documentation.
+Every claim below was read in the code, not inferred from the documentation. This section is the baseline captured at the start of the plan: paths, line numbers and endpoints it lists describe the pre-P1 state. The live surface today is only the `/api/v1` paths documented in [`docs/api/api-documentation.md`](api/api-documentation.md).
 
 ### 1.1 Routes actually exposed
 
@@ -199,7 +199,7 @@ Effort: **S** under half a day, **M** one to three days, **L** more than three d
 - [x] **P1.6** Serve the documentation under `/api/v1/docs/`, `/api/v1/redoc/` and `/api/v1/schema/`. — *S* — all three paths load and the schema validates with `manage.py spectacular --validate`. — Depends on: P1.1.
 - [x] **P1.7** Restrict the profile to `GET` and `PATCH`. — *S* — `PUT /auth/profile/` returns `405`, and the schema no longer advertises it. — Depends on: P1.1.
 - [x] **P1.8** Fix the resource payloads. — *M* — conversation and message fields match what the contract and the frontend types declare, no field is sent that the frontend never reads, and `message_count` is declared once. — Depends on: P0.19.
-- [ ] **P1.9** Cut the legacy routes. — *S* — `/api/auth/` and `/api/chat/` return `404`, the OpenAPI schema lists only `/api/v1` paths, and the README and documentation mention no legacy path. — Depends on: P1.2, P1.7, frontend release.
+- [x] **P1.9** Cut the legacy routes. — *S* — `/api/auth/` and `/api/chat/` return `404`, the OpenAPI schema lists only `/api/v1` paths, and the README and documentation mention no legacy path. — Depends on: P1.2, P1.7 (the frontend release dependency was waived by decision: the frontend follows the backend in a later pass).
 - [ ] **P1.10** Rewrite the Postman collection and environment. — *M* — every contract endpoint is covered, `conversation_id` is captured from the create response instead of being hardcoded, and pagination, 401, 404, 429 and the error envelope are asserted. — Depends on: P1.9.
 - [x] **P1.11** Move logout to the contract path. — *S* — `POST /api/v1/auth/logout/` blacklists the refresh token, the frontend logout call is updated in the same release. — Depends on: P0.8, P1.1.
 - [ ] **P1.12** State the versioning and deprecation policy. — *S* — the contract documents that a breaking change requires `/api/v2/`, a notice in the changelog, and an update to both repository copies. — Depends on: P1.9.

@@ -24,7 +24,7 @@ Access tokens are valid for 15 minutes, refresh tokens for 7 days. Refresh token
 
 ### Register
 
-`POST /api/auth/register/`, no authentication.
+`POST /api/v1/auth/register/`, no authentication.
 
 ```json
 {
@@ -63,7 +63,7 @@ The four default password validators apply, so a weak or common password is reje
 
 ### Get tokens
 
-`POST /api/auth/token/`, no authentication.
+`POST /api/v1/auth/token/`, no authentication.
 
 ```json
 {
@@ -86,7 +86,7 @@ The four default password validators apply, so a weak or common password is reje
 
 ### Refresh tokens
 
-`POST /api/auth/token/refresh/`, no authentication.
+`POST /api/v1/auth/token/refresh/`, no authentication.
 
 ```json
 {
@@ -105,7 +105,7 @@ The four default password validators apply, so a weak or common password is reje
 
 ### Logout
 
-`POST /api/v1/auth/logout/`, no authentication. (The legacy alias `/api/auth/logout/` still serves until the legacy cut.)
+`POST /api/v1/auth/logout/`, no authentication.
 
 ```json
 {
@@ -119,7 +119,7 @@ The four default password validators apply, so a weak or common password is reje
 
 ### Read the profile
 
-`GET /api/auth/profile/`, authentication required.
+`GET /api/v1/auth/profile/`, authentication required.
 
 ```json
 {
@@ -131,11 +131,11 @@ The four default password validators apply, so a weak or common password is reje
 
 ### Update the profile
 
-`PATCH /api/auth/profile/`, authentication required. `email` and `username` are writable, the rest is read-only. There is no confirmation step when the email changes. `PUT` returns `405`, the contract keeps only `PATCH`.
+`PATCH /api/v1/auth/profile/`, authentication required. `email` and `username` are writable, the rest is read-only. There is no confirmation step when the email changes. `PUT` returns `405`, the contract keeps only `PATCH`.
 
 ## Conversations
 
-Base path `/api/chat/conversations/`, authentication required. Conversations and messages are identified by a `uuid` string. There is no pagination: a list endpoint returns a plain JSON array.
+Base path `/api/v1/chat/conversations/`, authentication required. Conversations and messages are identified by a `uuid` string. List endpoints paginate with the `{count, next, previous, results}` envelope, default `page_size` 20, and a client-supplied `page_size` is capped at 20.
 
 The **list** endpoint returns a lean summary without the messages:
 
@@ -177,7 +177,7 @@ A **single** conversation embeds its full message list:
 
 ### List conversations
 
-`GET /api/chat/conversations/` returns a paginated page of lean summaries, most recently updated first. Every list endpoint paginates with the `{count, next, previous, results}` envelope, default `page_size` 20, and a client-supplied `page_size` is capped at 20.
+`GET /api/v1/chat/conversations/` returns a paginated page of lean summaries, most recently updated first.
 
 ```json
 {
@@ -198,7 +198,7 @@ A **single** conversation embeds its full message list:
 
 ### Create a conversation
 
-`POST /api/chat/conversations/`
+`POST /api/v1/chat/conversations/`
 
 ```json
 {
@@ -235,9 +235,7 @@ A conversation owned by another user returns `404`, never `403`, because the que
 
 ## Sending a message
 
-Both routes are synchronous: the request stays open until the model has finished answering, and the complete assistant message comes back in the response.
-
-The contract path inside an existing conversation is `POST /api/v1/chat/conversations/{uuid}/messages/` (see above). The legacy routes below still serve until the legacy cut: `POST /api/chat/chat/`, or `POST /api/chat/chat/{conversation_id}/` to continue an existing conversation.
+Sending a message happens on the messages endpoint of an existing conversation: `POST /api/v1/chat/conversations/{uuid}/messages/` (see above). The request stays open until the model has finished answering, and the complete assistant message comes back in the response.
 
 ```json
 {
@@ -260,14 +258,13 @@ Status codes:
 
 | Code | When |
 |---|---|
-| `201 Created` | New conversation: `POST /api/chat/chat/` created it |
-| `200 OK` | Existing conversation |
+| `201 Created` | Assistant message created |
 | `400 Bad Request` | `validation_error`: `{"error": {"code": "validation_error", "message": "Message is required", "details": {}}}` |
-| `404 Not Found` | `not_found`, unknown id or not yours |
+| `404 Not Found` | `not_found`, unknown conversation or not yours |
 | `503 Service Unavailable` | Provider down: `{"error": {"code": "llm_unavailable", "message": "The AI service is temporarily unavailable. Please try again later.", "details": {}}}` |
 | `500 Internal Server Error` | `server_error` envelope |
 
-A conversation created implicitly by the first message takes its title from the first 50 characters of the message.
+A conversation is never created implicitly by a message: the frontend creates the conversation first, then posts its messages.
 
 ### Provider failures return `503`
 
@@ -320,18 +317,18 @@ python manage.py runserver
 ```
 
 ```bash
-curl -X POST http://localhost:8000/api/auth/register/ \
+curl -X POST http://localhost:8000/api/v1/auth/register/ \
   -H 'Content-Type: application/json' \
   -d '{"email":"user@example.com","username":"user","password":"SecurePass123!","password2":"SecurePass123!"}'
 
-curl -X POST http://localhost:8000/api/auth/token/ \
+curl -X POST http://localhost:8000/api/v1/auth/token/ \
   -H 'Content-Type: application/json' \
   -d '{"email":"user@example.com","password":"SecurePass123!"}'
 
-curl http://localhost:8000/api/chat/conversations/ \
+curl http://localhost:8000/api/v1/chat/conversations/ \
   -H 'Authorization: Bearer <access>'
 
-curl -X POST http://localhost:8000/api/chat/chat/ \
+curl -X POST http://localhost:8000/api/v1/chat/conversations/<conversation_uuid>/messages/ \
   -H 'Authorization: Bearer <access>' \
   -H 'Content-Type: application/json' \
   -d '{"message":"What is Django?"}'
