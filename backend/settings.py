@@ -155,9 +155,10 @@ SPECTACULAR_SETTINGS = {
 
     ## Authentication
     Most endpoints require JWT authentication via Bearer token.
-    Obtain tokens via `/api/auth/token/` endpoint.
+    Obtain tokens via `/api/v1/auth/token/` endpoint.
     ''',
     'VERSION': '1.0.0',
+    'SERVERS': [{'url': '/api/v1'}],
     'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,
     

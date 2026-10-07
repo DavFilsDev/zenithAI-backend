@@ -6,6 +6,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/auth/', include('users.urls')),
     path('api/chat/', include('chat.urls')),
+    path('api/v1/auth/', include('users.urls')),
+    path('api/v1/chat/', include('chat.urls')),
 
     # OpenAPI documentation
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
