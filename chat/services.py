@@ -6,6 +6,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class LLMUnavailableError(Exception):
+    def __init__(self, message):
+        self.message = message
+        super().__init__(message)
+
+
 class GeminiService:
     # Updated to current stable free-tier models (April 2026)
     AVAILABLE_MODELS = {
@@ -66,18 +72,9 @@ Be concise, friendly, and educational in tone."""
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Gemini API error: {error_msg}")
-
-            if "404" in error_msg:
-                return (
-                    f" Model '{self.model_name}' not found. "
-                    "Check that your model name is correct (e.g. 'gemini-2.5-flash')."
-                )
-            elif "API key" in error_msg or "403" in error_msg:
-                return " Invalid API key. Please check your GEMINI_API_KEY in settings."
-            elif "429" in error_msg:
-                return " Rate limit reached on the free tier. Please wait a moment and try again."
-            else:
-                return f" Sorry, I encountered an error: {error_msg[:200]}"
+            raise LLMUnavailableError(
+                "The AI service is temporarily unavailable. Please try again later."
+            )
 
 
 # Singleton instance used across the app
