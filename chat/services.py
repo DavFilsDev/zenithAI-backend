@@ -6,6 +6,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+class LLMUnavailableError(Exception):
+    def __init__(self, message):
+        self.message = message
+        super().__init__(message)
+
+
 class GeminiService:
     # Updated to current stable free-tier models (April 2026)
     AVAILABLE_MODELS = {
@@ -24,32 +30,18 @@ When answering coding questions:
 Be concise, friendly, and educational in tone."""
 
     def __init__(self):
-        try:
-            self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
-            self.model_name = settings.GEMINI_MODEL
-            self.available = True
-            logger.info(f"Gemini AI initialized with model: {self.model_name}")
-            self._test_connection()
-        except Exception as e:
-            self.available = False
-            logger.error(f" Failed to initialize Gemini: {str(e)}")
+        self.model_name = settings.GEMINI_MODEL
+        self.client = None
 
-    def _test_connection(self):
-        try:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents="Hi",
-                config=types.GenerateContentConfig(max_output_tokens=5),
-            )
-            logger.info(f" Connection test successful: {self.model_name}")
-        except Exception as e:
-            logger.warning(f" Model test failed: {str(e)}")
+    def _client(self):
+        if self.client is None:
+            self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        return self.client
 
     def generate_response(self, message, conversation_history=None):
-        if not self.available:
-            return " AI service is currently unavailable. Please try again later."
-
         try:
+            client = self._client()
+
             # Build the conversation as a single prompt with history context
             if conversation_history:
                 context_parts = []
@@ -63,7 +55,7 @@ Be concise, friendly, and educational in tone."""
 
             logger.info(f"Generating response with model: {self.model_name}")
 
-            response = self.client.models.generate_content(
+            response = client.models.generate_content(
                 model=self.model_name,
                 contents=prompt,
                 config=types.GenerateContentConfig(
@@ -80,18 +72,9 @@ Be concise, friendly, and educational in tone."""
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Gemini API error: {error_msg}")
-
-            if "404" in error_msg:
-                return (
-                    f" Model '{self.model_name}' not found. "
-                    "Check that your model name is correct (e.g. 'gemini-2.5-flash')."
-                )
-            elif "API key" in error_msg or "403" in error_msg:
-                return " Invalid API key. Please check your GEMINI_API_KEY in settings."
-            elif "429" in error_msg:
-                return " Rate limit reached on the free tier. Please wait a moment and try again."
-            else:
-                return f" Sorry, I encountered an error: {error_msg[:200]}"
+            raise LLMUnavailableError(
+                "The AI service is temporarily unavailable. Please try again later."
+            )
 
 
 # Singleton instance used across the app

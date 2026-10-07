@@ -1,10 +1,12 @@
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenBlacklistSerializer
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse, OpenApiExample
 from django.contrib.auth import get_user_model
 from .serializers import UserSerializer, RegisterSerializer
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 User = get_user_model()
 
@@ -21,6 +23,28 @@ class CustomTokenRefreshView(TokenRefreshView):
     )
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)
+
+class LogoutView(APIView):
+    permission_classes = (permissions.AllowAny,)
+
+    @extend_schema(
+        summary="Logout",
+        description="Blacklist the presented refresh token so it can no longer be used",
+        tags=['Authentication'],
+        request=TokenBlacklistSerializer,
+        responses={
+            204: OpenApiResponse(description="Refresh token blacklisted"),
+            400: OpenApiResponse(description="Refresh token missing or malformed"),
+            401: OpenApiResponse(description="Invalid or expired refresh token"),
+        },
+    )
+    def post(self, request):
+        serializer = TokenBlacklistSerializer(data=request.data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError as e:
+            raise InvalidToken(e.args[0]) from e
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):

@@ -1,21 +1,21 @@
 from rest_framework import generics, permissions, status
+from django.db.models import Count
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .models import Conversation, Message
-from .serializers import ConversationSerializer, MessageSerializer
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample, OpenApiResponse
-from drf_spectacular.types import OpenApiTypes
-from .services import gemini_service
+from .serializers import ConversationSerializer, ConversationListSerializer, MessageSerializer
+from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
+from .services import gemini_service, LLMUnavailableError
 import logging
 
 logger = logging.getLogger(__name__)
 
 class ConversationListView(generics.ListCreateAPIView):
-    serializer_class = ConversationSerializer
+    serializer_class = ConversationListSerializer
     permission_classes = (permissions.IsAuthenticated,)
     
     def get_queryset(self):
-        return Conversation.objects.filter(user=self.request.user)
+        return Conversation.objects.filter(user=self.request.user).annotate(message_count=Count('messages'))
     
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -26,7 +26,7 @@ class ConversationListView(generics.ListCreateAPIView):
         tags=['Chat'],
         responses={
             200: OpenApiResponse(
-                response=ConversationSerializer(many=True),
+                response=ConversationListSerializer(many=True),
                 description="List of conversations retrieved successfully"
             ),
             401: OpenApiResponse(
@@ -38,12 +38,11 @@ class ConversationListView(generics.ListCreateAPIView):
                 'Successful Response',
                 value=[
                     {
-                        'id': 1,
+                        'uuid': '3f7a2c1e-8b4d-4f0e-9a2c-1e8b4d4f0e9a',
                         'title': 'My First Conversation',
                         'created_at': '2026-03-03T10:00:00Z',
                         'updated_at': '2026-03-03T10:00:00Z',
-                        'message_count': 0,
-                        'messages': []
+                        'message_count': 0
                     }
                 ],
                 response_only=True,
@@ -60,7 +59,7 @@ class ConversationListView(generics.ListCreateAPIView):
         request=ConversationSerializer,
         responses={
             201: OpenApiResponse(
-                response=ConversationSerializer,
+                response=ConversationListSerializer,
                 description="Conversation created successfully"
             ),
             400: OpenApiResponse(
@@ -81,12 +80,11 @@ class ConversationListView(generics.ListCreateAPIView):
             OpenApiExample(
                 'Create Response',
                 value={
-                    'id': 1,
+                    'uuid': '3f7a2c1e-8b4d-4f0e-9a2c-1e8b4d4f0e9a',
                     'title': 'My New Conversation',
                     'created_at': '2026-03-03T10:00:00Z',
                     'updated_at': '2026-03-03T10:00:00Z',
-                    'message_count': 0,
-                    'messages': []
+                    'message_count': 0
                 },
                 response_only=True,
             ),
@@ -97,6 +95,7 @@ class ConversationListView(generics.ListCreateAPIView):
 
 class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = ConversationSerializer
+    lookup_field = 'uuid'
     permission_classes = (permissions.IsAuthenticated,)
     
     def get_queryset(self):
@@ -125,20 +124,20 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
             OpenApiExample(
                 'Successful Response',
                 value={
-                    'id': 1,
+                    'uuid': '3f7a2c1e-8b4d-4f0e-9a2c-1e8b4d4f0e9a',
                     'title': 'My First Conversation',
                     'created_at': '2026-03-03T10:00:00Z',
                     'updated_at': '2026-03-03T10:06:00Z',
                     'message_count': 2,
                     'messages': [
                         {
-                            'id': 1,
+                            'uuid': '5e4b3a2c-1d9f-4b8e-a3c5-6d7f8a9b0c1d',
                             'role': 'user',
                             'content': 'What is Django?',
                             'created_at': '2026-03-03T10:04:00Z'
                         },
                         {
-                            'id': 2,
+                            'uuid': 'a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
                             'role': 'assistant',
                             'content': 'Django is a Python web framework...',
                             'created_at': '2026-03-03T10:04:01Z'
@@ -241,18 +240,9 @@ class ChatView(APIView):
         - Uses the first 50 characters of your message as the title
         - Returns the AI response with the new conversation context
         
-        The AI uses Google Gemini 1.5 Flash model for fast, intelligent responses.
+        The AI uses Google Gemini 2.5 Flash for fast, intelligent responses.
         """,
         tags=['Chat'],
-        parameters=[
-            OpenApiParameter(
-                name='conversation_id',
-                type=OpenApiTypes.INT,
-                location=OpenApiParameter.PATH,
-                description='ID of existing conversation (optional). If not provided, creates new conversation.',
-                required=False,
-            ),
-        ],
         request=OpenApiExample(
             'Message Request',
             value={
@@ -268,7 +258,7 @@ class ChatView(APIView):
                     OpenApiExample(
                         'Successful Response',
                         value={
-                            'id': 1,
+                            'uuid': 'a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d',
                             'role': 'assistant',
                             'content': 'The capital of France is Paris. It is known as the "City of Light" and is famous for the Eiffel Tower, Louvre Museum, and Notre-Dame Cathedral.',
                             'created_at': '2026-03-03T10:30:00Z'
@@ -301,8 +291,17 @@ class ChatView(APIView):
                     )
                 ]
             ),
+            503: OpenApiResponse(
+                description='The AI provider is unavailable',
+                examples=[
+                    OpenApiExample(
+                        'Provider Unavailable',
+                        value={'error': {'code': 'llm_unavailable', 'message': 'The AI service is temporarily unavailable. Please try again later.'}}
+                    )
+                ]
+            ),
             500: OpenApiResponse(
-                description='Internal server error during AI response generation',
+                description='Internal server error not related to the provider',
                 examples=[
                     OpenApiExample(
                         'Server Error',
@@ -335,7 +334,7 @@ class ChatView(APIView):
         
         if conversation_id:
             conversation = Conversation.objects.filter(
-                id=conversation_id, 
+                uuid=conversation_id, 
                 user=request.user
             ).first()
             if not conversation:
@@ -372,7 +371,12 @@ class ChatView(APIView):
             # Return 201 if new conversation was created, 200 otherwise
             status_code = status.HTTP_201_CREATED if not conversation_id else status.HTTP_200_OK
             return Response(serializer.data, status=status_code)
-            
+
+        except LLMUnavailableError as e:
+            return Response(
+                {'error': {'code': 'llm_unavailable', 'message': str(e)}},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         except Exception as e:
             logger.error(f"Chat error for user {request.user.id}: {str(e)}")
             return Response(

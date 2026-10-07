@@ -7,14 +7,11 @@ cffi==2.0.0
 charset-normalizer==3.4.7
 cryptography==46.0.6
 distro==1.9.0
-dj-rest-auth==7.0.2
 Django==5.2.11
-django-allauth==65.14.1
 django-cors-headers==4.9.0
 djangorestframework==3.16.1
 djangorestframework_simplejwt==5.5.1
 drf-spectacular==0.29.0
-google-ai-generativelanguage==0.6.15
 google-api-core==2.30.2
 google-api-python-client==2.193.0
 google-auth==2.49.1
@@ -56,4 +53,3 @@ typing-inspection==0.4.2
 typing_extensions==4.15.0
 uritemplate==4.2.0
 urllib3==2.6.3
-websockets==16.0
