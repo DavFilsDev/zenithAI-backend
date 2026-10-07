@@ -164,14 +164,12 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
                             'id': 1,
                             'role': 'user',
                             'content': 'What is Django?',
-                            'tokens': 0,
                             'created_at': '2026-03-03T10:04:00Z'
                         },
                         {
                             'id': 2,
                             'role': 'assistant',
                             'content': 'Django is a Python web framework...',
-                            'tokens': 0,
                             'created_at': '2026-03-03T10:04:01Z'
                         }
                     ]
@@ -320,7 +318,6 @@ class ChatView(APIView):
                             'id': 1,
                             'role': 'assistant',
                             'content': 'The capital of France is Paris. It is known as the "City of Light" and is famous for the Eiffel Tower, Louvre Museum, and Notre-Dame Cathedral.',
-                            'tokens': 0,
                             'created_at': '2026-03-03T10:30:00Z'
                         }
                     )
