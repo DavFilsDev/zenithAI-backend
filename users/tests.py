@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
@@ -95,3 +96,56 @@ class TokenSecurityTests(APITestCase):
     def test_logout_rejects_a_missing_refresh_token(self):
         response = self.client.post(reverse('logout'), {})
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class EmailNormalizationTests(APITestCase):
+    def test_registration_lowercases_the_email(self):
+        response = self.client.post(reverse('register'), {
+            'email': 'MixedCase@Example.COM',
+            'username': 'mixed-case',
+            'password': 'Str0ng-Passw0rd!42',
+            'password2': 'Str0ng-Passw0rd!42',
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(User.objects.get(username='mixed-case').email, 'mixedcase@example.com')
+
+    def test_registration_rejects_case_insensitive_duplicate(self):
+        User.objects.create_user(
+            email='duplicate@example.com',
+            username='duplicate',
+            password='Str0ng-Passw0rd!42',
+        )
+        response = self.client.post(reverse('register'), {
+            'email': 'DUPLICATE@Example.com',
+            'username': 'dup-two',
+            'password': 'Str0ng-Passw0rd!42',
+            'password2': 'Str0ng-Passw0rd!42',
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('email', response.data)
+
+    def test_login_accepts_uppercase_email(self):
+        self.password = 'Str0ng-Passw0rd!42'
+        User.objects.create_user(
+            email='login@example.com',
+            username='login-user',
+            password=self.password,
+        )
+        response = self.client.post(
+            reverse('token_obtain_pair'),
+            {'email': 'LOGIN@Example.COM', 'password': self.password},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_database_rejects_case_insensitive_duplicate(self):
+        User.objects.create_user(
+            email='db-case@example.com',
+            username='db-case',
+            password='Str0ng-Passw0rd!42',
+        )
+        with self.assertRaises(IntegrityError):
+            User.objects.create_user(
+                email='DB-CASE@Example.com',
+                username='db-case-two',
+                password='Str0ng-Passw0rd!42',
+            )
