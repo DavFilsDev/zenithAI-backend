@@ -7,8 +7,6 @@ logger = logging.getLogger(__name__)
 
 
 class GeminiService:
-    """Service to handle Google Gemini AI interactions using the google-genai package."""
-
     # Updated to current stable free-tier models (April 2026)
     AVAILABLE_MODELS = {
         "gemini-2.5-flash": "gemini-2.5-flash",     # Best free tier: fast + smart
@@ -26,7 +24,6 @@ When answering coding questions:
 Be concise, friendly, and educational in tone."""
 
     def __init__(self):
-        """Initialize Gemini with API key and configuration."""
         try:
             self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
             self.model_name = settings.GEMINI_MODEL
@@ -38,7 +35,6 @@ Be concise, friendly, and educational in tone."""
             logger.error(f" Failed to initialize Gemini: {str(e)}")
 
     def _test_connection(self):
-        """Test if the model is accessible with a minimal request."""
         try:
             response = self.client.models.generate_content(
                 model=self.model_name,
@@ -50,16 +46,6 @@ Be concise, friendly, and educational in tone."""
             logger.warning(f" Model test failed: {str(e)}")
 
     def generate_response(self, message, conversation_history=None):
-        """
-        Generate an AI response using Gemini.
-
-        Args:
-            message: The current user message (str)
-            conversation_history: List of {'role': ..., 'content': ...} dicts (optional)
-
-        Returns:
-            str: The AI response text
-        """
         if not self.available:
             return " AI service is currently unavailable. Please try again later."
 
@@ -81,7 +67,6 @@ Be concise, friendly, and educational in tone."""
                 model=self.model_name,
                 contents=prompt,
                 config=types.GenerateContentConfig(
-                    #  System instruction makes the model better at coding help
                     system_instruction=self.CODING_SYSTEM_PROMPT,
                     temperature=settings.GEMINI_CONFIG.get("temperature", 0.7),
                     max_output_tokens=settings.GEMINI_CONFIG.get("max_output_tokens", 2048),
