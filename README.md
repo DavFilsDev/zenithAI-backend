@@ -65,7 +65,7 @@ python manage.py createsuperuser
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | PostgreSQL connection |
 | `GEMINI_API_KEY` | Free Gemini key, used by the chat endpoint |
 
-`CORS_ALLOWED_ORIGINS`, `LLM_PROVIDER`, `LLM_API_KEY` and `LLM_MODEL` in `.env.example` are the configuration the shared contract requires. They take effect with phase P0 and P2 of the improvement plan. Until then the CORS origins are hardcoded in the settings and the provider is read from `GEMINI_API_KEY`.
+`CORS_ALLOWED_ORIGINS`, `LLM_PROVIDER`, `LLM_API_KEY` and `LLM_MODEL` in `.env.example` are the configuration the shared contract requires. `CORS_ALLOWED_ORIGINS` is read from the environment in phase P0. `LLM_*` and the provider still follow `GEMINI_API_KEY` until phase P2 of the improvement plan.
 
 The frontend runs on `http://localhost:5173` and calls the backend directly, with no proxy, so that origin is the one that must be allowed.
 
