@@ -30,8 +30,7 @@ Findings:
 - No logout, no health check, no message sub-resource, no streaming endpoint, no pagination, no throttling.
 - The default permission is `IsAuthenticated` (`backend/settings.py:122-124`), and the two token endpoints opt out through SimpleJWT itself rather than through an explicit declaration.
 - `SERVE_INCLUDE_SCHEMA: False` (`backend/settings.py:153`) means the schema is served at `/api/schema/` and not at `/api/schema/?format=openapi`. The documentation never stated this.
-- The schema description still says "ChatGPT-like platform" and "Credit system for API usage" (`backend/settings.py:140-146`).
-- `chat/views.py:293` documents Gemini 1.5 Flash while `gemini-2.5-flash` is configured (`backend/settings.py:176`).
+- P0.17 removed the "ChatGPT-like" / "Credit system" wording from the schema description and aligned the model name with the configured `gemini-2.5-flash`.
 
 ### 1.2 Models
 
@@ -101,12 +100,12 @@ Source: `backend/settings.py`.
 - Querysets are correctly scoped to the current user: `chat/views.py:28-30`, `chat/views.py:130-132`, `chat/views.py:397-401`. **No IDOR exists today.** Any new endpoint that skips this filter would introduce one, so the rule is written into the conventions.
 - Object access goes through the filtered queryset, so a conversation owned by somebody else returns `404`, not the `403` documented in the schema examples (`chat/views.py:146-151`, `chat/views.py:195-198`).
 - Public ids are UUIDs on `Conversation` and `Message`: a `uuid` field with a DB constraint, payloads carry `uuid` instead of `id`, and URL converters are `<uuid:uuid>` / `<uuid:conversation_id>` (`chat/urls.py:6,8`). The frontend types them as `string` (`src/types/chat.ts`, `src/types/user.ts` in the frontend repository), so the switch is a type-level fix on both sides.
-- `ConversationSerializer` nests the full message list of every conversation (`chat/serializers.py:33`). A list of 20 conversations with 500 messages each returns every one of them, with one extra query per conversation. `message_count` is declared twice, as `source='messages.count'` and as `get_message_count()` (`chat/serializers.py:34,47-48`).
+- `ConversationSerializer` embeds the full message list of a **single** conversation (`chat/serializers.py:33`). The list endpoint uses `ConversationListSerializer` with an annotated `message_count`, so `GET /conversations/` runs a constant number of queries whatever the history size (`chat/serializers.py:10-19`, `chat/views.py:20-24`).
 - The payload omits `user` on a conversation and `conversation` on a message, which the frontend types declare (`src/types/chat.ts`).
 - `message_count` is sent but never read by the frontend.
 - The login response returns `access`, `refresh`, `user_id`, `email`, `username`, `credits`, `is_premium` (`users/views.py:30-38`), while the frontend expects a nested `user` object and fetches `/auth/profile/` as a second request.
 - Registration returns only `RegisterSerializer` output, `{email, username}` (`users/views.py:65`), with no tokens, so the frontend has to log in again.
-- The OpenAPI schema declares `conversation_id` as a **path** parameter on an endpoint where it is optional (`chat/views.py:296-304`).
+- The OpenAPI schema derives `conversation_id` from the URL converter `<uuid:conversation_id>` and only on the route where it exists; the base `POST /chat/` no longer declares a path parameter (P0.17).
 
 ### 1.8 Tests
 
@@ -184,10 +183,10 @@ Effort: **S** under half a day, **M** one to three days, **L** more than three d
 - [x] **P0.13** Build the Gemini client lazily, without any network call at import. — *S* — `migrate`, `collectstatic` and `showmigrations` work with the network disabled; no request is issued when the module is imported. — Depends on: nothing.
 - [x] **P0.14** Remove the dead dependencies. — *S* — `dj-rest-auth`, `django-allauth`, `websockets` and `google-ai-generativelanguage` leave `requirements.txt`; `openai` stays only if P2 uses it, otherwise it leaves too. — Depends on: nothing.
 - [x] **P0.15** Add the production security settings. — *M* — `SECURE_SSL_REDIRECT`, `SECURE_HSTS_SECONDS`, `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`, `SECURE_PROXY_SSL_HEADER` and `USE_X_FORWARDED_HOST` are set when `DEBUG` is off; the admin is only reachable over HTTPS. — Depends on: P3.9.
-- [ ] **P0.16** Normalise emails and make uniqueness case-insensitive. — *S* — `Foo@Example.com` and `foo@example.com` are the same account, and a `UniqueConstraint(Lower('email'))` is in place. — Depends on: nothing.
-- [ ] **P0.17** Correct the OpenAPI metadata. — *S* — the description no longer mentions ChatGPT or credits, the model name matches the configuration, and `conversation_id` is no longer declared as a path parameter. — Depends on: nothing.
-- [ ] **P0.18** Stop returning provider errors as successful assistant messages. — *S* — a provider failure returns `503 llm_unavailable`, nothing is persisted as an assistant message, and the raw provider error never reaches the client. — Depends on: P0.13.
-- [ ] **P0.19** Bound the conversation list payload. — *M* — listing conversations no longer embeds every message, the number of queries per request is constant, and the payload stops growing with history. — Depends on: nothing.
+- [x] **P0.16** Normalise emails and make uniqueness case-insensitive. — *S* — `Foo@Example.com` and `foo@example.com` are the same account, and a `UniqueConstraint(Lower('email'))` is in place. — Depends on: nothing.
+- [x] **P0.17** Correct the OpenAPI metadata. — *S* — the description no longer mentions ChatGPT or credits, the model name matches the configuration, and `conversation_id` is no longer declared as a path parameter. — Depends on: nothing.
+- [x] **P0.18** Stop returning provider errors as successful assistant messages. — *S* — a provider failure returns `503 llm_unavailable`, nothing is persisted as an assistant message, and the raw provider error never reaches the client. — Depends on: P0.13.
+- [x] **P0.19** Bound the conversation list payload. — *M* — listing conversations no longer embeds every message, the number of queries per request is constant, and the payload stops growing with history. — Depends on: nothing.
 - [x] **P0.20** Clean the leftovers: remove the Docker entry from `.gitignore` and the unused `UserProfile` references from the admin. — *S* — `.gitignore` contains no Docker entry; the admin imports cleanly. — Depends on: P0.4.
 
 ### P1 — Migration to contract v1

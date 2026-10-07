@@ -131,7 +131,19 @@ The four default password validators apply, so a weak or common password is reje
 
 Base path `/api/chat/conversations/`, authentication required. Conversations and messages are identified by a `uuid` string. There is no pagination: a list endpoint returns a plain JSON array.
 
-A conversation looks like this, and always embeds its full message list:
+The **list** endpoint returns a lean summary without the messages:
+
+```json
+{
+  "uuid": "3f7a2c1e-8b4d-4f0e-9a2c-1e8b4d4f0e9a",
+  "title": "My first conversation",
+  "created_at": "2026-02-20T14:26:03.123456Z",
+  "updated_at": "2026-02-20T14:26:03.123456Z",
+  "message_count": 2
+}
+```
+
+A **single** conversation embeds its full message list:
 
 ```json
 {
@@ -159,7 +171,7 @@ A conversation looks like this, and always embeds its full message list:
 
 ### List conversations
 
-`GET /api/chat/conversations/` returns a plain array, most recently updated first. A conversation created by sending a message is not listed here unless it exists in the table; it does, it was created by the same endpoint that sends the message, see below.
+`GET /api/chat/conversations/` returns a plain array, most recently updated first, one lean summary per conversation. A conversation created by sending a message is not listed here unless it exists in the table; it does, it was created by the same endpoint that sends the message, see below.
 
 ### Create a conversation
 
@@ -171,16 +183,16 @@ A conversation looks like this, and always embeds its full message list:
 }
 ```
 
-`201 Created` with the conversation, an empty `messages` list and `message_count: 0`. The conversation is always attached to the authenticated user.
+`201 Created` with the conversation summary: `message_count: 0` and no `messages` list. The conversation is always attached to the authenticated user.
 
 ### Read, update, delete a conversation
 
 | Method | Path | Result |
 |---|---|---|
-| `GET` | `/api/chat/conversations/{id}/` | `200` with the messages |
-| `PATCH` | `/api/chat/conversations/{id}/` | `200`, `title` only |
-| `PUT` | `/api/chat/conversations/{id}/` | `200`, `title` only |
-| `DELETE` | `/api/chat/conversations/{id}/` | `204`, messages cascade |
+| `GET` | `/api/chat/conversations/{uuid}/` | `200` with the messages |
+| `PATCH` | `/api/chat/conversations/{uuid}/` | `200`, `title` only |
+| `PUT` | `/api/chat/conversations/{uuid}/` | `200`, `title` only |
+| `DELETE` | `/api/chat/conversations/{uuid}/` | `204`, messages cascade |
 
 A conversation owned by another user returns `404`, never `403`, because the queryset is filtered by the authenticated user.
 
@@ -215,13 +227,14 @@ Status codes:
 | `200 OK` | Existing conversation |
 | `400 Bad Request` | `{"error": "Message is required"}` |
 | `404 Not Found` | `{"error": "Conversation not found"}`, unknown id or not yours |
+| `503 Service Unavailable` | Provider down: `{"error": {"code": "llm_unavailable", "message": "The AI service is temporarily unavailable. Please try again later."}}` |
 | `500 Internal Server Error` | `{"error": "Failed to generate AI response. Please try again."}` |
 
 A conversation created implicitly by the first message takes its title from the first 50 characters of the message.
 
-### Provider failures are currently reported as a normal answer
+### Provider failures return `503`
 
-The model call is Google Gemini, configured by `GEMINI_API_KEY` and `GEMINI_MODEL`. When the provider is unreachable, the key is invalid, the model is unknown or the free tier is rate limited, the service **stores the error message as an assistant message and returns `200`**. The text is displayed as a normal answer and stays in the conversation history. This is wrong, and it is corrected in phase P0: a provider failure becomes a `503` with a machine-readable code.
+The model call is Google Gemini, configured by `GEMINI_API_KEY` and `GEMINI_MODEL`. When the provider is unreachable, the key is invalid, the model is unknown or the free tier is rate limited, the request returns `503` with machine-readable `llm_unavailable`. Nothing is persisted as an assistant message: the write stops at the user message. The raw provider error is only logged and never sent to the client.
 
 ## Not available yet
 
@@ -247,7 +260,8 @@ Errors use the plain Django REST Framework shapes, not a shared envelope.
 | Validation error | Field map, for example `{"email": ["This field is required."]}` |
 | Missing or invalid token | `{"detail": "Authentication credentials were not provided."}` |
 | Unknown or unowned conversation | `{"error": "Conversation not found"}` |
-| Provider failure | `{"error": "Failed to generate AI response. Please try again."}` |
+| Provider failure | `503` with `{"error": {"code": "llm_unavailable", "message": "The AI service is temporarily unavailable. Please try again later."}}` |
+| Unexpected server error | `{"error": "Failed to generate AI response. Please try again."}` |
 
 ## Trying it locally
 
