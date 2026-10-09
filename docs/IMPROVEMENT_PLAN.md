@@ -206,7 +206,7 @@ Effort: **S** under half a day, **M** one to three days, **L** more than three d
 
 ### P2 — LLM abstraction, free provider, streaming and limits
 
-- [ ] **P2.1** Define the provider interface. — *M* — a single protocol with `generate` and `stream`, no framework import, so a fake can replace it in tests. — Depends on: nothing.
+- [x] **P2.1** Define the provider interface. — *M* — a single protocol with `generate` and `stream`, no framework import, so a fake can replace it in tests. — Depends on: nothing.
 - [ ] **P2.2** Extract the Gemini implementation behind the interface. — *M* — behaviour is unchanged, no provider import leaks into views, and the system prompt becomes configuration. — Depends on: P2.1, P0.13.
 - [ ] **P2.3** Add the Groq implementation. — *S* — the same interface is implemented on the OpenAI-compatible endpoint, selected by `LLM_PROVIDER=groq` and `LLM_MODEL`. — Depends on: P2.1.
 - [ ] **P2.4** Add a provider factory with fallback. — *M* — `LLM_PROVIDER`, `LLM_API_KEY` and `LLM_MODEL` are the only settings, a missing key fails at startup with a clear message, and a second provider can be used automatically when the first is rate limited. — Depends on: P2.2, P2.3.
