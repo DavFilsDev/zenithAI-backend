@@ -3,7 +3,7 @@
 > **This contract is shared with the frontend repository and describes the TARGET state. Both repositories must keep an identical copy. Any change must be made in both.**
 
 Contract version: `v1`
-Status: partially implemented. Everything in §3 is live except streaming (`/conversations/{uuid}/messages/stream/` stays Planned); §9 usage limits and §10 multi-provider are planned. The currently deployed API is documented in [`docs/api/api-documentation.md`](api/api-documentation.md).
+Status: partially implemented. All endpoints in §3 are live, including SSE streaming; throttling and the global daily cap (§9) and the provider circuit breaker are planned. The currently deployed API is documented in [`docs/api/api-documentation.md`](api/api-documentation.md).
 
 ## 1. Product
 
@@ -42,7 +42,7 @@ Status legend: **Implemented** = available today, **Planned** = described by thi
 | DELETE | `/conversations/{uuid}/` | Yes | Implemented | `DELETE /api/v1/chat/conversations/{uuid}/` |
 | GET | `/conversations/{uuid}/messages/` | Yes | Implemented | `GET /api/v1/chat/conversations/{uuid}/messages/` |
 | POST | `/conversations/{uuid}/messages/` | Yes | Implemented | `POST /api/v1/chat/conversations/{uuid}/messages/` |
-| POST | `/conversations/{uuid}/messages/stream/` | Yes | Planned | — |
+| POST | `/conversations/{uuid}/messages/stream/` | Yes | Implemented | `POST /api/v1/chat/conversations/{uuid}/messages/stream/` (SSE) |
 | GET | `/health/` | No | Implemented | `GET /api/v1/health/` |
 
 ### 3.1 Method set

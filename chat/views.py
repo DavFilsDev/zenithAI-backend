@@ -1,13 +1,22 @@
-from rest_framework import generics, permissions, status, exceptions
-from django.db.models import Count
-from rest_framework.response import Response
-from .models import Conversation, Message
-from .serializers import ConversationSerializer, ConversationListSerializer, MessageSerializer
-from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
-from .services import LLMUnavailableError, generate_assistant_reply
+import json
 import logging
 
+from rest_framework import generics, permissions, status, exceptions
+from django.db.models import Count
+from django.http import StreamingHttpResponse
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from .models import Conversation, Message
+from .serializers import ConversationSerializer, ConversationListSerializer, MessageSerializer
+from .services import LLMUnavailableError, generate_assistant_reply, stream_assistant_reply
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
+
 logger = logging.getLogger(__name__)
+
+
+def _sse(event, payload):
+    return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
 
 class ConversationListView(generics.ListCreateAPIView):
     serializer_class = ConversationListSerializer
@@ -269,3 +278,74 @@ class MessageListCreateView(generics.ListCreateAPIView):
             logger.error(f"Chat error for user {request.user.id}: {str(e)}")
             raise
         return Response(MessageSerializer(ai_msg).data, status=status.HTTP_201_CREATED)
+
+
+class MessageStreamView(APIView):
+    permission_classes = (permissions.IsAuthenticated,)
+
+    def _get_owned_conversation(self):
+        conversation = Conversation.objects.filter(
+            uuid=self.kwargs['conversation_id'],
+            user=self.request.user,
+        ).first()
+        if conversation is None:
+            raise exceptions.NotFound('Conversation not found')
+        return conversation
+
+    @extend_schema(
+        summary="Stream a message in a conversation",
+        description=(
+            "Send a message inside an existing conversation and stream the assistant reply as "
+            "Server-Sent Events (`text/event-stream`). Emits `token` events with the reply "
+            "fragments, then a `done` event carrying the message and conversation ids, or an "
+            "`error` event in the contract error format."
+        ),
+        tags=['Chat'],
+        request=OpenApiExample(
+            'Message Request',
+            value={'message': 'What is the capital of France?'},
+        ),
+        responses={
+            200: OpenApiResponse(
+                response=OpenApiTypes.STR,
+                description="SSE stream: `token`, then `done`, or an `error` event",
+            ),
+            400: OpenApiResponse(description="Message field is required"),
+            401: OpenApiResponse(description="Authentication required"),
+            404: OpenApiResponse(description="Conversation not found or not owned by the caller"),
+        },
+    )
+    def post(self, request, *args, **kwargs):
+        user_message = request.data.get('message')
+        if not user_message:
+            raise exceptions.ValidationError('Message is required')
+        conversation = self._get_owned_conversation()
+
+        def event_stream():
+            state = {}
+            stream = stream_assistant_reply(conversation, user_message, state)
+            try:
+                for fragment in stream:
+                    yield _sse('token', {'content': fragment})
+                assistant = state['assistant_message']
+                yield _sse('done', {
+                    'message_id': str(assistant.uuid),
+                    'conversation_id': str(conversation.uuid),
+                })
+            except LLMUnavailableError as e:
+                yield _sse('error', {'code': 'llm_unavailable', 'message': str(e)})
+            except Exception:
+                logger.error(
+                    'Streaming error for conversation %s', conversation.uuid, exc_info=True
+                )
+                yield _sse('error', {
+                    'code': 'server_error',
+                    'message': 'An unexpected error occurred.',
+                })
+            finally:
+                stream.close()
+
+        response = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'
+        return response

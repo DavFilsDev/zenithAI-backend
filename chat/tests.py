@@ -7,7 +7,7 @@ from rest_framework.test import APITestCase
 
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, MessageSerializer
-from .services import LLMUnavailableError, provider
+from .services import LLMUnavailableError, provider, stream_assistant_reply
 
 User = get_user_model()
 
@@ -310,3 +310,84 @@ class PaginationTests(APITestCase):
         self.assertIsNone(response.data['next'])
         self.assertIsNone(response.data['previous'])
         self.assertEqual(response.data['results'], [])
+
+
+class StreamingTests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='stream@example.com',
+            username='stream-user',
+            password='Str0ng-Passw0rd!42',
+        )
+        self.conversation = Conversation.objects.create(user=self.user, title='Stream chat')
+        self.client.force_authenticate(user=self.user)
+
+    def _url(self):
+        return f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/stream/'
+
+    def _body(self, response):
+        return b''.join(response.streaming_content).decode()
+
+    @patch('chat.services.provider.stream', return_value=iter(['Hel', 'lo']))
+    def test_happy_path_emits_tokens_then_done_and_persists_once(self, mock_stream):
+        response = self.client.post(self._url(), {'message': 'Hi'})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/event-stream')
+        body = self._body(response)
+
+        assistant = self.conversation.messages.get(role='assistant')
+        self.assertEqual(assistant.content, 'Hello')
+
+        self.assertIn('event: token\ndata: {"content": "Hel"}\n\n', body)
+        self.assertIn('event: token\ndata: {"content": "lo"}\n\n', body)
+        self.assertIn('event: done\n', body)
+        self.assertIn(f'"message_id": "{assistant.uuid}"', body)
+        self.assertIn(f'"conversation_id": "{self.conversation.uuid}"', body)
+
+        self.assertEqual(self.conversation.messages.filter(role='user').count(), 1)
+        self.assertEqual(self.conversation.messages.filter(role='assistant').count(), 1)
+
+    @patch('chat.services.provider.stream', return_value=iter(['a', 'b', 'c']))
+    def test_disconnect_mid_stream_leaves_no_assistant_row(self, mock_stream):
+        state = {}
+        generator = stream_assistant_reply(self.conversation, 'Hi', state)
+        self.assertEqual(next(generator), 'a')
+        generator.close()
+
+        self.assertEqual(self.conversation.messages.filter(role='assistant').count(), 0)
+        self.assertEqual(self.conversation.messages.filter(role='user').count(), 1)
+        self.assertNotIn('assistant_message', state)
+
+    def test_provider_error_mid_stream_emits_error_and_persists_no_assistant(self):
+        def failing_stream(message, history):
+            yield 'partial'
+            raise LLMUnavailableError('The AI service is temporarily unavailable. Please try again later.')
+
+        with patch('chat.services.provider.stream', side_effect=failing_stream):
+            response = self.client.post(self._url(), {'message': 'Hi'})
+            body = self._body(response)
+
+        self.assertIn('event: token\ndata: {"content": "partial"}\n\n', body)
+        self.assertIn('event: error\n', body)
+        self.assertIn('"code": "llm_unavailable"', body)
+        self.assertEqual(self.conversation.messages.filter(role='assistant').count(), 0)
+        self.assertEqual(self.conversation.messages.filter(role='user').count(), 1)
+
+    def test_missing_message_returns_validation_error_envelope(self):
+        response = self.client.post(self._url(), {})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.data['error']['code'], 'validation_error')
+
+    def test_unknown_conversation_returns_not_found_envelope(self):
+        response = self.client.post(
+            f'/api/v1/chat/conversations/{uuid4()}/messages/stream/',
+            {'message': 'Hi'},
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.data['error']['code'], 'not_found')
+
+    def test_unauthenticated_request_returns_unauthorized_envelope(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.post(self._url(), {'message': 'Hi'})
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.data['error']['code'], 'unauthorized')

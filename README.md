@@ -101,20 +101,21 @@ python manage.py spectacular --file schema.yml
 | GET, POST | `/api/v1/chat/conversations/` | Yes |
 | GET, PATCH, DELETE | `/api/v1/chat/conversations/{uuid}/` | Yes |
 | GET, POST | `/api/v1/chat/conversations/{uuid}/messages/` | Yes |
+| POST | `/api/v1/chat/conversations/{uuid}/messages/stream/` (SSE) | Yes |
 | GET | `/api/v1/health/` | No |
 | GET | `/api/v1/schema/`, `/api/v1/docs/`, `/api/v1/redoc/` | No |
 | GET | `/admin/` | Staff |
 
 Authentication is a bearer token: `Authorization: Bearer <access_token>`. Access tokens last 15 minutes, refresh tokens 7 days, rotate on use and the rotated token is blacklisted.
 
-Conversation and message ids are UUID strings, list endpoints are paginated with a page size of 20, and there is no streaming and no throttling yet. The full list of what is missing is in the improvement plan.
+Conversation and message ids are UUID strings, list endpoints are paginated with a page size of 20, assistant replies can be streamed as Server-Sent Events, and there is no throttling yet. The full list of what is missing is in the improvement plan.
 
 ## Project structure
 
 ```
 backend/     settings and root URLconf
 users/       custom user model, registration, profile
-chat/        conversations, messages, LLM service
+chat/        conversations, messages, and the provider-backed LLM service (chat/providers/)
 docs/        contract, conventions, improvement plan, API documentation
 CHANGELOG.md API and behavior changes, versioning per the contract
 manage.py
@@ -137,14 +138,14 @@ Implemented today:
 - Registration, token issuance, token refresh, logout, profile read and update
 - Refresh-token rotation with blacklisting and 15-minute access tokens
 - Conversation and message CRUD with UUID identifiers, paginated lists
-- Message exchange with a server-side Gemini key
+- Message exchange and SSE streaming behind a provider interface (Gemini or Groq), with a configurable fallback provider and a bounded prompt budget
 - Health check, shared error envelope, Swagger UI, ReDoc and OpenAPI schema
 - All endpoints under the versioned base path `/api/v1`
 
 Planned, in the order of the roadmap:
 
-- UUID identifiers, then the `/api/v1/` base path, message sub-resource, pagination, health check and a shared error envelope
-- A provider interface with a second free provider, SSE streaming, throttling and a global daily cap
+- Per-IP and per-user throttling and a global daily cap
+- A circuit breaker around the provider
 - Tooling: `pyproject.toml`, ruff, mypy, pytest, coverage, pre-commit
 - CI, containers, and deployment on free hosting with a free PostgreSQL database
 
