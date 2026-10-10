@@ -3,7 +3,7 @@
 > **This contract is shared with the frontend repository and describes the TARGET state. Both repositories must keep an identical copy. Any change must be made in both.**
 
 Contract version: `v1`
-Status: partially implemented. Everything in §3 is live except streaming (`/conversations/{uuid}/messages/stream/` stays Planned); §9 usage limits and §10 multi-provider are planned. The currently deployed API is documented in [`docs/api/api-documentation.md`](api/api-documentation.md).
+Status: implemented. Every endpoint in §3 is live, including SSE streaming, and the usage limits in §9 (per-IP and per-user throttling, and the global daily cap) are enforced. Repeated provider failures are absorbed by a circuit breaker, which keeps the API returning `503 llm_unavailable` and recovers automatically after a cool-down. The currently deployed API is documented in [`docs/api/api-documentation.md`](api/api-documentation.md).
 
 ## 1. Product
 
@@ -42,7 +42,7 @@ Status legend: **Implemented** = available today, **Planned** = described by thi
 | DELETE | `/conversations/{uuid}/` | Yes | Implemented | `DELETE /api/v1/chat/conversations/{uuid}/` |
 | GET | `/conversations/{uuid}/messages/` | Yes | Implemented | `GET /api/v1/chat/conversations/{uuid}/messages/` |
 | POST | `/conversations/{uuid}/messages/` | Yes | Implemented | `POST /api/v1/chat/conversations/{uuid}/messages/` |
-| POST | `/conversations/{uuid}/messages/stream/` | Yes | Planned | — |
+| POST | `/conversations/{uuid}/messages/stream/` | Yes | Implemented | `POST /api/v1/chat/conversations/{uuid}/messages/stream/` (SSE) |
 | GET | `/health/` | No | Implemented | `GET /api/v1/health/` |
 
 ### 3.1 Method set
@@ -127,15 +127,17 @@ Every error response, without exception, uses this envelope:
 | `method_not_allowed` | 405 | HTTP method not allowed on this endpoint |
 | `rate_limited` | 429 | Per-IP or per-user throttling |
 | `quota_exhausted` | 429 | Global daily cap reached |
-| `llm_unavailable` | 503 | Provider unreachable, errored or rate limited |
+| `llm_unavailable` | 503 | Provider unreachable, errored or rate limited; a provider `429` is included here, with a `Retry-After` header when the provider supplies one |
 | `server_error` | 500 | Unexpected failure |
 
 A resource that exists but belongs to someone else returns `404 not_found`, never `403`, so that ids cannot be probed.
 
 ## 9. Usage limits
 
-- Throttling per IP and per user.
-- A global daily cap shared by all users.
+- Throttling per IP and per user, applied to message sending and streaming.
+- An authenticated caller may send 10 messages per minute per user, counting both the non-streaming and the streaming endpoint together.
+- An anonymous caller is limited to 5 messages per minute per IP.
+- A global daily cap of 500 messages per day is shared by all users.
 - Exceeding a limit returns `429` with a `Retry-After` header and the code `rate_limited` or `quota_exhausted`.
 - There are no credits and no billing state on the user.
 
@@ -156,9 +158,16 @@ Backend:
 | `ALLOWED_HOSTS` | Comma-separated host list |
 | `DATABASE_URL` or `DB_*` | Database connection |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated frontend origins |
-| `LLM_PROVIDER` | Active provider (`gemini`, `groq`) |
+| `LLM_PROVIDER` | Active provider (`gemini`, `groq`), `LLM_*` are the only LLM settings |
 | `LLM_API_KEY` | Free provider key |
 | `LLM_MODEL` | Model id |
+| `LLM_FALLBACK_PROVIDER` | Second provider used automatically when the primary is rate limited or unavailable |
+| `LLM_FALLBACK_API_KEY` | Key of the fallback provider |
+| `LLM_FALLBACK_MODEL` | Model id of the fallback provider |
+| `LLM_PROMPT_BUDGET` | Token budget for the history sent with each request (default `4000`) |
+| `DAILY_MESSAGE_CAP` | Global maximum messages per day across all users (default `500`) |
+| `LLM_BREAKER_THRESHOLD` | Consecutive provider failures that open the circuit breaker (default `5`) |
+| `LLM_BREAKER_COOLDOWN` | Seconds the circuit stays open before a trial call (default `60`) |
 
 Frontend:
 

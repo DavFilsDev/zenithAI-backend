@@ -266,9 +266,42 @@ Status codes:
 
 A conversation is never created implicitly by a message: the frontend creates the conversation first, then posts its messages.
 
+### Streaming a message
+
+`POST /api/v1/chat/conversations/{uuid}/messages/stream/`, authentication required. Same request body as the non-streaming endpoint. The reply is streamed as Server-Sent Events (`text/event-stream`).
+
+| Event | Data |
+|---|---|
+| `token` | `{"content": "<fragment>"}` |
+| `done` | `{"message_id": "<uuid>", "conversation_id": "<uuid>"}` |
+| `error` | `{"code": "<code>", "message": "<text>"}` |
+
+```
+event: token
+data: {"content": "The capital of "}
+
+event: token
+data: {"content": "France is Paris."}
+
+event: done
+data: {"message_id": "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d", "conversation_id": "3f7a2c1e-8b4d-4f0e-9a2c-1e8b4d4f0e9a"}
+```
+
+The user message is stored as soon as the stream starts; the assistant message is stored once, when the stream completes. A client that disconnects mid-stream leaves no assistant message. A missing `message`, an unauthenticated caller or an unknown conversation still returns the normal JSON error envelope (`400`, `401`, `404`) before any event. A provider failure raised while streaming is reported as an `error` event with code `llm_unavailable`, and nothing is persisted as an assistant message.
+
+A plain `curl -N` shows the raw stream:
+
+```
+curl -N -H "Authorization: Bearer <access>" -H "Content-Type: application/json" \
+  -d '{"message": "Hi"}' \
+  http://localhost:8000/api/v1/chat/conversations/<uuid>/messages/stream/
+```
+
 ### Provider failures return `503`
 
-The model call is Google Gemini, configured by `GEMINI_API_KEY` and `GEMINI_MODEL`. When the provider is unreachable, the key is invalid, the model is unknown or the free tier is rate limited, the request returns `503` with machine-readable `llm_unavailable`. Nothing is persisted as an assistant message: the write stops at the user message. The raw provider error is only logged and never sent to the client.
+The model call goes to the provider selected by `LLM_PROVIDER` (Gemini or Groq on the OpenAI-compatible endpoint), configured by `LLM_API_KEY` and `LLM_MODEL`; a second provider configured with `LLM_FALLBACK_*` is used automatically when the primary is unavailable. When every provider is unreachable, the key is invalid, the model is unknown or the free tier is rate limited, the request returns `503` with machine-readable `llm_unavailable`. A provider `429` also maps to `llm_unavailable` and, when the provider reports one, the response carries a `Retry-After` header with the number of seconds to wait. The raw provider error and its text are only logged server-side and never sent to the client; the client always receives the fixed message above. Nothing is persisted as an assistant message: the write stops at the user message. A missing or empty key is refused at startup as a configuration error (`ImproperlyConfigured`) when `DEBUG` is off.
+
+After `LLM_BREAKER_THRESHOLD` consecutive failures (default 5) the circuit breaker opens: calls return the same `503 llm_unavailable` immediately, without contacting the provider, until `LLM_BREAKER_COOLDOWN` seconds (default 60) have passed. The next call then tries the provider again, and a success closes the circuit. This keeps a provider outage from turning every request into a long timeout.
 
 ### Health check
 
@@ -281,16 +314,9 @@ The model call is Google Gemini, configured by `GEMINI_API_KEY` and `GEMINI_MODE
 
 The failure body stays a plain machine-readable probe result, not the API error envelope, because this endpoint is consumed by monitoring, not by API clients.
 
-## Not available yet
+### Rate limits
 
-None of the following exists today. All of them are specified in [`docs/API_CONTRACT.md`](../API_CONTRACT.md).
-
-| Capability | Contract path |
-|---|---|
-| Server-sent event streaming | `POST /api/v1/conversations/{uuid}/messages/stream/` |
-| Versioned base path | `/api/v1/` |
-| Shared error envelope | `{"error": {"code", "message", "details"}}` |
-| Per-IP and per-user throttling, global daily cap | `429` with `Retry-After` |
+Sending and streaming messages are throttled. An authenticated caller may send 10 messages per minute per user, counting the non-streaming and streaming endpoint together; an anonymous caller is limited to 5 per minute per IP. On top of that, a global cap of 500 messages per day is shared by all users, counted in the database so it survives a restart and resets at midnight. Exceeding the per-minute limit returns `429` with the code `rate_limited`; reaching the daily cap returns `429` with the code `quota_exhausted`. Both carry a `Retry-After` header with the number of seconds to wait. Listing messages and the other endpoints are not throttled and do not count against the cap.
 
 ## Errors today
 
@@ -302,12 +328,14 @@ Errors use the shared envelope `{"error": {"code", "message", "details"}}`, with
 | `unauthorized` | 401 | `{"error": {"code": "unauthorized", "message": "Authentication credentials were not provided.", "details": {}}}` |
 | `not_found` | 404 | `{"error": {"code": "not_found", "message": "Conversation not found", "details": {}}}` |
 | `method_not_allowed` | 405 | `{"error": {"code": "method_not_allowed", "message": "Method \\"POST\\" not allowed.", "details": {}}}` |
+| `rate_limited` | 429 | `{"error": {"code": "rate_limited", "message": "Request was throttled. Expected available in 60 seconds.", "details": {}}}`, with a `Retry-After` header |
+| `quota_exhausted` | 429 | `{"error": {"code": "quota_exhausted", "message": "The daily message quota has been exhausted. It resets at midnight.", "details": {}}}`, with a `Retry-After` header |
 | `llm_unavailable` | 503 | `{"error": {"code": "llm_unavailable", "message": "The AI service is temporarily unavailable. Please try again later.", "details": {}}}` |
 | `server_error` | 500 | `{"error": {"code": "server_error", "message": "An unexpected error occurred.", "details": {}}}` |
 
 ## Trying it locally
 
-The Postman collection in this directory, `zenith-ai-api.postman_collection.json` with the environment `zenith-ai-api.postman_environment.json`, covers every implemented contract endpoint under `/api/v1`: registration, tokens, profile, logout, conversations, pagination, the nested messages resource and the health check. Requests run in order — register, login, create a conversation, then use the others — and `conversation_uuid` is captured from the create response instead of being hardcoded. Envelope errors are asserted for 400, 404, 405 and 401; sending a message needs a live Gemini key and accepts either `201` or a `503 llm_unavailable`. A live `429 rate_limited` cannot be produced yet: throttling is task P2.8, and the collection's rate-limit request asserts the `rate_limited` envelope only once such a response actually appears.
+The Postman collection in this directory, `zenith-ai-api.postman_collection.json` with the environment `zenith-ai-api.postman_environment.json`, covers every implemented JSON contract endpoint under `/api/v1`: registration, tokens, profile, logout, conversations, pagination, the nested messages resource and the health check. Requests run in order — register, login, create a conversation, then use the others — and `conversation_uuid` is captured from the create response instead of being hardcoded. Envelope errors are asserted for 400, 404, 405 and 401; sending a message needs a live provider key and accepts either `201` or a `503 llm_unavailable`. The SSE stream is not part of the collection; check it with the `curl -N` example above. Rate limiting is live: sending more than 10 messages in a minute from the same account makes the collection's rate-limit request return the `429 rate_limited` envelope, and hitting the shared daily cap returns `429 quota_exhausted`; the request asserts either once it appears.
 
 The quickest manual check, with a fresh user:
 

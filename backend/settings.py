@@ -116,6 +116,14 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Cache (used by DRF throttling; LocMemCache is fine for a single instance)
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'zenith-ai',
+    }
+}
+
 # CORS Settings
 CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
 
@@ -135,7 +143,14 @@ REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_PAGINATION_CLASS': 'backend.pagination.StandardResultsSetPagination',
     'EXCEPTION_HANDLER': 'backend.exceptions.exception_handler',
+    'DEFAULT_THROTTLE_RATES': {
+        'messages_user': '10/min',
+        'messages_anon': '5/min',
+    },
 }
+
+# Global daily message cap shared by all users
+DAILY_MESSAGE_CAP = int(os.getenv('DAILY_MESSAGE_CAP', '500'))
 
 # JWT Settings
 SIMPLE_JWT = {
@@ -183,16 +198,32 @@ SPECTACULAR_SETTINGS = {
 # Custom User Model
 AUTH_USER_MODEL = 'users.User'
 
-# Google Gemini AI Settings
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
-GEMINI_MODEL = "gemini-2.5-flash"
+LLM_SYSTEM_PROMPT = """You are a helpful AI assistant specialized in programming and software development.
+When answering coding questions:
+- Provide clear, well-commented code examples
+- Explain *why* the code works, not just what it does
+- Point out common mistakes and how to avoid them
+- Suggest best practices for the language or framework being used
+Be concise, friendly, and educational in tone."""
 
-GEMINI_CONFIG = {
-    "temperature": 0.7,
-    "max_output_tokens": 2048,
-    "top_p": 0.95,
-    "top_k": 40,
-}
+LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'gemini')
+LLM_API_KEY = os.getenv('LLM_API_KEY', '')
+LLM_MODEL = os.getenv('LLM_MODEL', 'gemini-2.5-flash')
+
+LLM_FALLBACK_PROVIDER = os.getenv('LLM_FALLBACK_PROVIDER', '')
+LLM_FALLBACK_API_KEY = os.getenv('LLM_FALLBACK_API_KEY', '')
+LLM_FALLBACK_MODEL = os.getenv('LLM_FALLBACK_MODEL', '')
+
+LLM_PROMPT_BUDGET = int(os.getenv('LLM_PROMPT_BUDGET', '4000'))
+
+LLM_BREAKER_THRESHOLD = int(os.getenv('LLM_BREAKER_THRESHOLD', '5'))
+LLM_BREAKER_COOLDOWN = int(os.getenv('LLM_BREAKER_COOLDOWN', '60'))
+
+if not DEBUG:
+    from chat.providers.factory import validate_config
+
+    validate_config()
+    del validate_config
 
 # Production security
 if not DEBUG:

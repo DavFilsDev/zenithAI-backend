@@ -1,10 +1,24 @@
 import logging
 
 from django.conf import settings
+from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import exception_handler as drf_exception_handler
 
 logger = logging.getLogger(__name__)
+
+
+class QuotaExhausted(APIException):
+    """The shared daily message quota is used up."""
+
+    status_code = 429
+    default_detail = 'The daily message quota has been exhausted. It resets at midnight.'
+    default_code = 'quota_exhausted'
+
+    def __init__(self, retry_after=None):
+        self.retry_after = int(retry_after) if isinstance(retry_after, (int, float)) else None
+        super().__init__()
+
 
 _CODE_BY_STATUS = {
     400: 'validation_error',
@@ -60,10 +74,12 @@ def exception_handler(exc, context):
             status=500,
         )
 
-    code = _error_code(response.status_code)
+    code = 'quota_exhausted' if isinstance(exc, QuotaExhausted) else _error_code(response.status_code)
     headers = {}
-    if code == 'rate_limited':
-        wait = getattr(exc, 'wait', None)
+    if code in ('rate_limited', 'quota_exhausted'):
+        wait = getattr(exc, 'retry_after', None)
+        if wait is None:
+            wait = getattr(exc, 'wait', None)
         if isinstance(wait, (int, float)):
             headers['Retry-After'] = str(int(wait))
 

@@ -63,9 +63,13 @@ python manage.py createsuperuser
 | `DEBUG` | `True` in development, `False` in production |
 | `ALLOWED_HOSTS` | Comma-separated host list |
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | PostgreSQL connection |
-| `GEMINI_API_KEY` | Free Gemini key, used by the chat endpoint |
+| `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL` | Provider selection, key and model for the chat endpoint |
+| `LLM_FALLBACK_PROVIDER`, `LLM_FALLBACK_API_KEY`, `LLM_FALLBACK_MODEL` | Second provider used automatically when the primary is rate limited |
+| `LLM_PROMPT_BUDGET` | Token budget for the history sent with each request (default 4000) |
+| `DAILY_MESSAGE_CAP` | Global maximum messages per day across all users (default 500) |
+| `LLM_BREAKER_THRESHOLD`, `LLM_BREAKER_COOLDOWN` | Provider failures that open the circuit breaker and the cool-down in seconds (defaults 5 and 60) |
 
-`CORS_ALLOWED_ORIGINS`, `LLM_PROVIDER`, `LLM_API_KEY` and `LLM_MODEL` in `.env.example` are the configuration the shared contract requires. `CORS_ALLOWED_ORIGINS` is read from the environment in phase P0. `LLM_*` and the provider still follow `GEMINI_API_KEY` until phase P2 of the improvement plan.
+`CORS_ALLOWED_ORIGINS`, `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_PROMPT_BUDGET`, `DAILY_MESSAGE_CAP` and the `LLM_FALLBACK_*` variables in `.env.example` are the configuration the shared contract requires in section 11. `CORS_ALLOWED_ORIGINS` is read from the environment in phase P0. The `LLM_*` names are the only LLM settings; the legacy `GEMINI_*` names were removed in P2.11.
 
 The frontend runs on `http://localhost:5173` and calls the backend directly, with no proxy, so that origin is the one that must be allowed.
 
@@ -99,20 +103,21 @@ python manage.py spectacular --file schema.yml
 | GET, POST | `/api/v1/chat/conversations/` | Yes |
 | GET, PATCH, DELETE | `/api/v1/chat/conversations/{uuid}/` | Yes |
 | GET, POST | `/api/v1/chat/conversations/{uuid}/messages/` | Yes |
+| POST | `/api/v1/chat/conversations/{uuid}/messages/stream/` (SSE) | Yes |
 | GET | `/api/v1/health/` | No |
 | GET | `/api/v1/schema/`, `/api/v1/docs/`, `/api/v1/redoc/` | No |
 | GET | `/admin/` | Staff |
 
 Authentication is a bearer token: `Authorization: Bearer <access_token>`. Access tokens last 15 minutes, refresh tokens 7 days, rotate on use and the rotated token is blacklisted.
 
-Conversation and message ids are UUID strings, list endpoints are paginated with a page size of 20, and there is no streaming and no throttling yet. The full list of what is missing is in the improvement plan.
+Conversation and message ids are UUID strings, list endpoints are paginated with a page size of 20, assistant replies can be streamed as Server-Sent Events, and message sending is throttled per user and per IP. The full list of what is missing is in the improvement plan.
 
 ## Project structure
 
 ```
 backend/     settings and root URLconf
 users/       custom user model, registration, profile
-chat/        conversations, messages, LLM service
+chat/        conversations, messages, and the provider-backed LLM service (chat/providers/)
 docs/        contract, conventions, improvement plan, API documentation
 CHANGELOG.md API and behavior changes, versioning per the contract
 manage.py
@@ -135,14 +140,15 @@ Implemented today:
 - Registration, token issuance, token refresh, logout, profile read and update
 - Refresh-token rotation with blacklisting and 15-minute access tokens
 - Conversation and message CRUD with UUID identifiers, paginated lists
-- Message exchange with a server-side Gemini key
+- Message exchange and SSE streaming behind a provider interface (Gemini or Groq), with a configurable fallback provider and a bounded prompt budget
+- Per-user and per-IP throttling of message sending (`429 rate_limited` with `Retry-After`)
+- A database-backed global daily message cap (`429 quota_exhausted` with `Retry-After`) that survives a restart
+- A circuit breaker that fails fast with `503 llm_unavailable` during a provider outage and recovers after a cool-down
 - Health check, shared error envelope, Swagger UI, ReDoc and OpenAPI schema
 - All endpoints under the versioned base path `/api/v1`
 
 Planned, in the order of the roadmap:
 
-- UUID identifiers, then the `/api/v1/` base path, message sub-resource, pagination, health check and a shared error envelope
-- A provider interface with a second free provider, SSE streaming, throttling and a global daily cap
 - Tooling: `pyproject.toml`, ruff, mypy, pytest, coverage, pre-commit
 - CI, containers, and deployment on free hosting with a free PostgreSQL database
 
