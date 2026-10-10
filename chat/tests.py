@@ -7,7 +7,7 @@ from rest_framework.test import APITestCase
 
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, MessageSerializer
-from .services import LLMUnavailableError, gemini_service
+from .services import LLMUnavailableError, provider
 
 User = get_user_model()
 
@@ -132,7 +132,7 @@ class ProviderFailureTests(APITestCase):
         self.client.force_authenticate(user=self.user)
 
     @patch(
-        'chat.services.gemini_service.generate_response',
+        'chat.services.provider.generate',
         side_effect=LLMUnavailableError('The AI service is temporarily unavailable. Please try again later.'),
     )
     def test_provider_failure_returns_503_and_persists_nothing(self, mock_generate):
@@ -146,10 +146,10 @@ class ProviderFailureTests(APITestCase):
         self.assertEqual(self.conversation.messages.count(), 1)
         self.assertEqual(self.conversation.messages.first().role, 'user')
 
-    def test_generate_response_raises_without_an_api_key(self):
+    def test_generate_raises_without_an_api_key(self):
         with override_settings(GEMINI_API_KEY=''):
             with self.assertRaises(LLMUnavailableError):
-                gemini_service.generate_response('Hello')
+                provider.generate('Hello', [])
 
 
 class ErrorEnvelopeTests(APITestCase):
@@ -188,7 +188,7 @@ class ErrorEnvelopeTests(APITestCase):
 
     @override_settings(DEBUG=False)
     @patch(
-        'chat.services.gemini_service.generate_response',
+        'chat.services.provider.generate',
         side_effect=RuntimeError('boom'),
     )
     def test_unexpected_error_returns_server_error_envelope(self, mock_generate):
@@ -217,7 +217,7 @@ class NestedMessagesTests(APITestCase):
         self.assertEqual(response.data['count'], 1)
         self.assertEqual(response.data['results'][0]['role'], 'user')
 
-    @patch('chat.services.gemini_service.generate_response', return_value='Hello back')
+    @patch('chat.services.provider.generate', return_value='Hello back')
     def test_post_creates_both_messages_and_returns_the_assistant_message(self, mock_generate):
         response = self.client.post(
             f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/',
@@ -257,7 +257,7 @@ class NestedMessagesTests(APITestCase):
         self.assertEqual(response.data['error']['code'], 'method_not_allowed')
 
     @patch(
-        'chat.services.gemini_service.generate_response',
+        'chat.services.provider.generate',
         side_effect=LLMUnavailableError('The AI service is temporarily unavailable. Please try again later.'),
     )
     def test_post_provider_failure_returns_503_and_persists_only_the_user_message(self, mock_generate):
