@@ -301,6 +301,8 @@ curl -N -H "Authorization: Bearer <access>" -H "Content-Type: application/json" 
 
 The model call goes to the provider selected by `LLM_PROVIDER` (Gemini or Groq on the OpenAI-compatible endpoint), configured by `LLM_API_KEY` and `LLM_MODEL`; a second provider configured with `LLM_FALLBACK_*` is used automatically when the primary is unavailable. When every provider is unreachable, the key is invalid, the model is unknown or the free tier is rate limited, the request returns `503` with machine-readable `llm_unavailable`. A provider `429` also maps to `llm_unavailable` and, when the provider reports one, the response carries a `Retry-After` header with the number of seconds to wait. The raw provider error and its text are only logged server-side and never sent to the client; the client always receives the fixed message above. Nothing is persisted as an assistant message: the write stops at the user message. A missing or empty key is refused at startup as a configuration error (`ImproperlyConfigured`) when `DEBUG` is off.
 
+After `LLM_BREAKER_THRESHOLD` consecutive failures (default 5) the circuit breaker opens: calls return the same `503 llm_unavailable` immediately, without contacting the provider, until `LLM_BREAKER_COOLDOWN` seconds (default 60) have passed. The next call then tries the provider again, and a success closes the circuit. This keeps a provider outage from turning every request into a long timeout.
+
 ### Health check
 
 `GET /api/v1/health/`, public, no authentication. Runs a `SELECT 1` against the database.

@@ -9,6 +9,7 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from .models import Conversation, DailyQuota, Message
+from .providers import CircuitBreaker, CircuitBreakerProvider
 from .serializers import ConversationSerializer, MessageSerializer
 from .services import LLMUnavailableError, provider, stream_assistant_reply
 from .throttles import MessageAnonThrottle, MessageUserThrottle, seconds_until_midnight
@@ -526,3 +527,43 @@ class DailyQuotaTests(APITestCase):
     def test_seconds_until_midnight_is_within_a_day(self):
         self.assertGreaterEqual(seconds_until_midnight(), 1)
         self.assertLessEqual(seconds_until_midnight(), 86400)
+
+
+class CircuitBreakerIntegrationTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(
+            email='breaker@example.com',
+            username='breaker-user',
+            password='Str0ng-Passw0rd!42',
+        )
+        self.conversation = Conversation.objects.create(user=self.user, title='Breaker chat')
+        self.client.force_authenticate(user=self.user)
+
+    def _send_url(self):
+        return f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/'
+
+    def test_an_open_circuit_fails_fast_with_llm_unavailable(self):
+        class FailingCounter:
+            def __init__(self):
+                self.calls = 0
+
+            def generate(self, message, history):
+                self.calls += 1
+                raise LLMUnavailableError('down')
+
+        inner = FailingCounter()
+        breaker = CircuitBreaker(threshold=2, cooldown=60)
+        wrapped = CircuitBreakerProvider(inner, breaker)
+
+        with patch('chat.services.provider', wrapped):
+            for _ in range(2):
+                response = self.client.post(self._send_url(), {'message': 'Hi'})
+                self.assertEqual(response.status_code, 503)
+                self.assertEqual(response.data['error']['code'], 'llm_unavailable')
+            self.assertEqual(inner.calls, 2)
+
+            response = self.client.post(self._send_url(), {'message': 'Hi'})
+            self.assertEqual(response.status_code, 503)
+            self.assertEqual(response.data['error']['code'], 'llm_unavailable')
+            self.assertEqual(inner.calls, 2)

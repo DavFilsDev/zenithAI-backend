@@ -1,12 +1,15 @@
+import time
 from types import SimpleNamespace
 from typing import Sequence
 from unittest.mock import patch
 
+from django.core.cache import cache
 from django.core.exceptions import ImproperlyConfigured
 from django.conf import settings
 from django.test import SimpleTestCase, override_settings
 
 from .base import ChatMessage, Provider
+from .breaker import CircuitBreaker, CircuitBreakerProvider
 from .errors import LLMUnavailableError, SAFE_PROVIDER_MESSAGE, provider_error
 from .factory import build_provider, validate_config
 from .fallback import FallbackProvider
@@ -141,7 +144,8 @@ class FactoryTests(SimpleTestCase):
     @override_settings(LLM_PROVIDER='gemini', LLM_FALLBACK_PROVIDER='')
     def test_build_provider_returns_the_configured_provider(self):
         provider = build_provider()
-        self.assertIsInstance(provider, GeminiProvider)
+        self.assertIsInstance(provider, CircuitBreakerProvider)
+        self.assertIsInstance(provider.provider, GeminiProvider)
 
     @override_settings(
         LLM_PROVIDER='gemini',
@@ -150,9 +154,10 @@ class FactoryTests(SimpleTestCase):
     )
     def test_build_provider_wraps_in_a_fallback_when_configured(self):
         provider = build_provider()
-        self.assertIsInstance(provider, FallbackProvider)
-        self.assertIsInstance(provider.primary, GeminiProvider)
-        self.assertIsInstance(provider.fallback, GroqProvider)
+        self.assertIsInstance(provider, CircuitBreakerProvider)
+        self.assertIsInstance(provider.provider, FallbackProvider)
+        self.assertIsInstance(provider.provider.primary, GeminiProvider)
+        self.assertIsInstance(provider.provider.fallback, GroqProvider)
 
     def test_validate_config_rejects_unknown_providers(self):
         with override_settings(LLM_PROVIDER='claude', LLM_API_KEY='x'):
@@ -202,6 +207,114 @@ class FallbackProviderTests(SimpleTestCase):
         fallback = FakeProvider()
         provider = FallbackProvider(primary, fallback)
         self.assertEqual(''.join(provider.stream('hi', [])), 'fragment')
+
+
+class CountingProvider:
+    def __init__(self, fail=False):
+        self.calls = 0
+        self.fail = fail
+
+    def generate(self, message, history):
+        self.calls += 1
+        if self.fail:
+            raise LLMUnavailableError('down')
+        return 'ok'
+
+    def stream(self, message, history):
+        self.calls += 1
+        if self.fail:
+            raise LLMUnavailableError('down')
+        yield 'ok'
+
+
+class CircuitBreakerTests(SimpleTestCase):
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    def test_opens_only_after_the_threshold(self):
+        breaker = CircuitBreaker(threshold=3, cooldown=60)
+        breaker.record_failure()
+        breaker.record_failure()
+        self.assertFalse(breaker.is_open())
+        breaker.record_failure()
+        self.assertTrue(breaker.is_open())
+
+    def test_a_success_resets_the_failure_count(self):
+        breaker = CircuitBreaker(threshold=2, cooldown=60)
+        breaker.record_failure()
+        breaker.record_success()
+        breaker.record_failure()
+        self.assertFalse(breaker.is_open())
+
+    def test_closes_after_the_cooldown(self):
+        breaker = CircuitBreaker(threshold=1, cooldown=0.05)
+        breaker.record_failure()
+        self.assertTrue(breaker.is_open())
+        time.sleep(0.06)
+        self.assertFalse(breaker.is_open())
+
+    def test_a_failed_trial_reopens_the_circuit(self):
+        breaker = CircuitBreaker(threshold=1, cooldown=0.05)
+        breaker.record_failure()
+        time.sleep(0.06)
+        self.assertFalse(breaker.is_open())
+        breaker.record_failure()
+        self.assertTrue(breaker.is_open())
+
+
+class CircuitBreakerProviderTests(SimpleTestCase):
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    def test_failures_open_the_circuit_and_later_calls_fail_fast(self):
+        inner = CountingProvider(fail=True)
+        breaker = CircuitBreaker(threshold=2, cooldown=60)
+        provider = CircuitBreakerProvider(inner, breaker)
+
+        for _ in range(2):
+            with self.assertRaises(LLMUnavailableError):
+                provider.generate('hi', [])
+        self.assertTrue(breaker.is_open())
+        self.assertEqual(inner.calls, 2)
+
+        with self.assertRaises(LLMUnavailableError) as context:
+            provider.generate('hi', [])
+        self.assertEqual(inner.calls, 2)
+        self.assertEqual(str(context.exception), SAFE_PROVIDER_MESSAGE)
+
+    def test_a_success_keeps_the_circuit_closed(self):
+        inner = CountingProvider()
+        breaker = CircuitBreaker(threshold=2, cooldown=60)
+        provider = CircuitBreakerProvider(inner, breaker)
+
+        self.assertEqual(provider.generate('hi', []), 'ok')
+        self.assertFalse(breaker.is_open())
+
+    def test_stream_failures_open_the_circuit_and_fail_fast(self):
+        inner = CountingProvider(fail=True)
+        breaker = CircuitBreaker(threshold=1, cooldown=60)
+        provider = CircuitBreakerProvider(inner, breaker)
+
+        with self.assertRaises(LLMUnavailableError):
+            list(provider.stream('hi', []))
+        self.assertTrue(breaker.is_open())
+        self.assertEqual(inner.calls, 1)
+
+        with self.assertRaises(LLMUnavailableError):
+            provider.stream('hi', [])
+        self.assertEqual(inner.calls, 1)
+
+    def test_a_successful_stream_resets_the_circuit(self):
+        inner = CountingProvider()
+        breaker = CircuitBreaker(threshold=2, cooldown=60)
+        breaker.record_failure()
+        provider = CircuitBreakerProvider(inner, breaker)
+
+        self.assertEqual(''.join(provider.stream('hi', [])), 'ok')
+        breaker.record_failure()
+        self.assertFalse(breaker.is_open())
 
 
 class PromptBudgetTests(SimpleTestCase):

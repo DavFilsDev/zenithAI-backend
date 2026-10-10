@@ -67,6 +67,7 @@ python manage.py createsuperuser
 | `LLM_FALLBACK_PROVIDER`, `LLM_FALLBACK_API_KEY`, `LLM_FALLBACK_MODEL` | Second provider used automatically when the primary is rate limited |
 | `LLM_PROMPT_BUDGET` | Token budget for the history sent with each request (default 4000) |
 | `DAILY_MESSAGE_CAP` | Global maximum messages per day across all users (default 500) |
+| `LLM_BREAKER_THRESHOLD`, `LLM_BREAKER_COOLDOWN` | Provider failures that open the circuit breaker and the cool-down in seconds (defaults 5 and 60) |
 
 `CORS_ALLOWED_ORIGINS`, `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_PROMPT_BUDGET`, `DAILY_MESSAGE_CAP` and the `LLM_FALLBACK_*` variables in `.env.example` are the configuration the shared contract requires in section 11. `CORS_ALLOWED_ORIGINS` is read from the environment in phase P0. The `LLM_*` names are the only LLM settings; the legacy `GEMINI_*` names were removed in P2.11.
 
@@ -142,12 +143,12 @@ Implemented today:
 - Message exchange and SSE streaming behind a provider interface (Gemini or Groq), with a configurable fallback provider and a bounded prompt budget
 - Per-user and per-IP throttling of message sending (`429 rate_limited` with `Retry-After`)
 - A database-backed global daily message cap (`429 quota_exhausted` with `Retry-After`) that survives a restart
+- A circuit breaker that fails fast with `503 llm_unavailable` during a provider outage and recovers after a cool-down
 - Health check, shared error envelope, Swagger UI, ReDoc and OpenAPI schema
 - All endpoints under the versioned base path `/api/v1`
 
 Planned, in the order of the roadmap:
 
-- A circuit breaker around the provider
 - Tooling: `pyproject.toml`, ruff, mypy, pytest, coverage, pre-commit
 - CI, containers, and deployment on free hosting with a free PostgreSQL database
 

@@ -216,6 +216,9 @@ LLM_FALLBACK_MODEL = os.getenv('LLM_FALLBACK_MODEL', '')
 
 LLM_PROMPT_BUDGET = int(os.getenv('LLM_PROMPT_BUDGET', '4000'))
 
+LLM_BREAKER_THRESHOLD = int(os.getenv('LLM_BREAKER_THRESHOLD', '5'))
+LLM_BREAKER_COOLDOWN = int(os.getenv('LLM_BREAKER_COOLDOWN', '60'))
+
 if not DEBUG:
     from chat.providers.factory import validate_config
 

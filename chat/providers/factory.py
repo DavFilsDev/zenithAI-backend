@@ -2,6 +2,7 @@ from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
 from .base import Provider
+from .breaker import CircuitBreaker, CircuitBreakerProvider
 from .fallback import FallbackProvider
 from .gemini import GeminiProvider
 from .groq import GroqProvider
@@ -28,7 +29,8 @@ def build_provider():
             settings.LLM_FALLBACK_MODEL,
         )
         provider = FallbackProvider(provider, fallback)
-    return provider
+    breaker = CircuitBreaker(settings.LLM_BREAKER_THRESHOLD, settings.LLM_BREAKER_COOLDOWN)
+    return CircuitBreakerProvider(provider, breaker)
 
 
 def validate_config():
