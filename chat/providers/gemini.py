@@ -7,7 +7,7 @@ from google import genai
 from google.genai import types
 
 from .base import ChatMessage, Provider
-from .errors import LLMUnavailableError
+from .errors import provider_error
 from .prompt import windowed_history
 
 logger = logging.getLogger(__name__)
@@ -67,9 +67,7 @@ class GeminiProvider:
             return response.text
         except Exception as e:
             logger.error(f"Gemini API error: {e}")
-            raise LLMUnavailableError(
-                "The AI service is temporarily unavailable. Please try again later."
-            )
+            raise provider_error(e)
 
     def stream(self, message: str, history: Sequence[ChatMessage]) -> Iterator[str]:
         try:
@@ -83,6 +81,4 @@ class GeminiProvider:
                     yield chunk.text
         except Exception as e:
             logger.error(f"Gemini API error: {e}")
-            raise LLMUnavailableError(
-                "The AI service is temporarily unavailable. Please try again later."
-            )
+            raise provider_error(e)

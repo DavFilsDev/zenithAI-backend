@@ -6,7 +6,7 @@ from django.conf import settings
 from openai import OpenAI
 
 from .base import ChatMessage
-from .errors import LLMUnavailableError
+from .errors import provider_error
 from .prompt import windowed_history
 
 logger = logging.getLogger(__name__)
@@ -60,9 +60,7 @@ class GroqProvider:
             return response.choices[0].message.content
         except Exception as e:
             logger.error(f"Groq API error: {e}")
-            raise LLMUnavailableError(
-                "The AI service is temporarily unavailable. Please try again later."
-            )
+            raise provider_error(e)
 
     def stream(self, message: str, history: Sequence[ChatMessage]) -> Iterator[str]:
         try:
@@ -79,6 +77,4 @@ class GroqProvider:
                     yield chunk.choices[0].delta.content
         except Exception as e:
             logger.error(f"Groq API error: {e}")
-            raise LLMUnavailableError(
-                "The AI service is temporarily unavailable. Please try again later."
-            )
+            raise provider_error(e)

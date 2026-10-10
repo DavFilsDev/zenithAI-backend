@@ -7,7 +7,7 @@ from django.conf import settings
 from django.test import SimpleTestCase, override_settings
 
 from .base import ChatMessage, Provider
-from .errors import LLMUnavailableError
+from .errors import LLMUnavailableError, SAFE_PROVIDER_MESSAGE, provider_error
 from .factory import build_provider, validate_config
 from .fallback import FallbackProvider
 from .gemini import GeminiProvider
@@ -302,3 +302,58 @@ class PromptBudgetTests(SimpleTestCase):
             [m['content'] for m in messages],
             [settings.LLM_SYSTEM_PROMPT, 'bbbb', 'New'],
         )
+
+
+class ProviderRateLimited(Exception):
+    def __init__(self, status_code=429, retry_after='7', raw='secret provider text'):
+        self.status_code = status_code
+        self.response = SimpleNamespace(headers={'Retry-After': retry_after})
+        super().__init__(raw)
+
+
+class ProviderErrorMappingTests(SimpleTestCase):
+    def test_rate_limit_maps_to_llm_unavailable_with_retry_after(self):
+        mapped = provider_error(ProviderRateLimited())
+        self.assertIsInstance(mapped, LLMUnavailableError)
+        self.assertEqual(mapped.retry_after, 7)
+        self.assertEqual(str(mapped), SAFE_PROVIDER_MESSAGE)
+
+    def test_raw_provider_text_never_reaches_the_message(self):
+        mapped = provider_error(ProviderRateLimited(raw='key sk-secret is invalid'))
+        self.assertNotIn('secret', str(mapped))
+
+    def test_gemini_style_code_attribute_is_understood(self):
+        exc = SimpleNamespace(code=429, response=SimpleNamespace(headers={'retry-after': '3'}))
+        self.assertEqual(provider_error(exc).retry_after, 3)
+
+    def test_non_rate_limit_has_no_retry_after(self):
+        exc = SimpleNamespace(status_code=500, response=SimpleNamespace(headers={'Retry-After': '9'}))
+        self.assertIsNone(provider_error(exc).retry_after)
+
+    def test_error_without_a_response_has_no_retry_after(self):
+        mapped = provider_error(RuntimeError('raw'))
+        self.assertIsNone(mapped.retry_after)
+        self.assertEqual(str(mapped), SAFE_PROVIDER_MESSAGE)
+
+    @patch('chat.providers.gemini.genai.Client')
+    def test_gemini_provider_propagates_retry_after(self, mock_client):
+        mock_client.return_value.models.generate_content.side_effect = ProviderRateLimited(retry_after='12')
+        provider = GeminiProvider(api_key='x')
+        with self.assertRaises(LLMUnavailableError) as context:
+            provider.generate('hi', [])
+        self.assertEqual(context.exception.retry_after, 12)
+
+    @patch('chat.providers.groq.OpenAI')
+    def test_groq_provider_propagates_retry_after(self, mock_openai):
+        completions = FakeCompletions(None)
+
+        def boom(**kwargs):
+            raise ProviderRateLimited(retry_after='5')
+
+        completions.create = boom
+        mock_openai.return_value = FakeClient(completions)
+
+        provider = GroqProvider(api_key='x')
+        with self.assertRaises(LLMUnavailableError) as context:
+            provider.generate('hi', [])
+        self.assertEqual(context.exception.retry_after, 5)

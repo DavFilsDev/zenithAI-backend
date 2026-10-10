@@ -127,7 +127,7 @@ Every error response, without exception, uses this envelope:
 | `method_not_allowed` | 405 | HTTP method not allowed on this endpoint |
 | `rate_limited` | 429 | Per-IP or per-user throttling |
 | `quota_exhausted` | 429 | Global daily cap reached |
-| `llm_unavailable` | 503 | Provider unreachable, errored or rate limited |
+| `llm_unavailable` | 503 | Provider unreachable, errored or rate limited; a provider `429` is included here, with a `Retry-After` header when the provider supplies one |
 | `server_error` | 500 | Unexpected failure |
 
 A resource that exists but belongs to someone else returns `404 not_found`, never `403`, so that ids cannot be probed.

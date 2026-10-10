@@ -145,6 +145,20 @@ class ProviderFailureTests(APITestCase):
         self.assertEqual(self.conversation.messages.filter(role='assistant').count(), 0)
         self.assertEqual(self.conversation.messages.count(), 1)
         self.assertEqual(self.conversation.messages.first().role, 'user')
+        self.assertNotIn('Retry-After', response.headers)
+
+    @patch(
+        'chat.services.provider.generate',
+        side_effect=LLMUnavailableError('The AI service is temporarily unavailable. Please try again later.', retry_after=42),
+    )
+    def test_rate_limited_provider_forwards_retry_after(self, mock_generate):
+        response = self.client.post(
+            f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/',
+            {'message': 'Hello'},
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.data['error']['code'], 'llm_unavailable')
+        self.assertEqual(response.headers['Retry-After'], '42')
 
     def test_generate_raises_without_an_api_key(self):
         with override_settings(LLM_API_KEY=''):

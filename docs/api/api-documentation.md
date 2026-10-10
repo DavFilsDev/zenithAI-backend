@@ -268,7 +268,7 @@ A conversation is never created implicitly by a message: the frontend creates th
 
 ### Provider failures return `503`
 
-The model call goes to the provider selected by `LLM_PROVIDER` (Gemini or Groq on the OpenAI-compatible endpoint), configured by `LLM_API_KEY` and `LLM_MODEL`; a second provider configured with `LLM_FALLBACK_*` is used automatically when the primary is unavailable. When every provider is unreachable, the key is invalid, the model is unknown or the free tier is rate limited, the request returns `503` with machine-readable `llm_unavailable`. Nothing is persisted as an assistant message: the write stops at the user message. The raw provider error is only logged and never sent to the client.
+The model call goes to the provider selected by `LLM_PROVIDER` (Gemini or Groq on the OpenAI-compatible endpoint), configured by `LLM_API_KEY` and `LLM_MODEL`; a second provider configured with `LLM_FALLBACK_*` is used automatically when the primary is unavailable. When every provider is unreachable, the key is invalid, the model is unknown or the free tier is rate limited, the request returns `503` with machine-readable `llm_unavailable`. A provider `429` also maps to `llm_unavailable` and, when the provider reports one, the response carries a `Retry-After` header with the number of seconds to wait. The raw provider error and its text are only logged server-side and never sent to the client; the client always receives the fixed message above. Nothing is persisted as an assistant message: the write stops at the user message. A missing or empty key is refused at startup as a configuration error (`ImproperlyConfigured`) when `DEBUG` is off.
 
 ### Health check
 

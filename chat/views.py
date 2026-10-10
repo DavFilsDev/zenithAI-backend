@@ -257,9 +257,13 @@ class MessageListCreateView(generics.ListCreateAPIView):
         try:
             ai_msg = generate_assistant_reply(conversation, user_message)
         except LLMUnavailableError as e:
+            headers = {}
+            if e.retry_after:
+                headers['Retry-After'] = str(e.retry_after)
             return Response(
                 {'error': {'code': 'llm_unavailable', 'message': str(e), 'details': {}}},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                headers=headers,
             )
         except Exception as e:
             logger.error(f"Chat error for user {request.user.id}: {str(e)}")
