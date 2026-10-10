@@ -206,6 +206,16 @@ LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'gemini')
 LLM_API_KEY = os.getenv('LLM_API_KEY', '')
 LLM_MODEL = os.getenv('LLM_MODEL', 'gemini-2.5-flash')
 
+LLM_FALLBACK_PROVIDER = os.getenv('LLM_FALLBACK_PROVIDER', '')
+LLM_FALLBACK_API_KEY = os.getenv('LLM_FALLBACK_API_KEY', '')
+LLM_FALLBACK_MODEL = os.getenv('LLM_FALLBACK_MODEL', '')
+
+if not DEBUG:
+    from chat.providers.factory import validate_config
+
+    validate_config()
+    del validate_config
+
 # Production security
 if not DEBUG:
     SECURE_SSL_REDIRECT = True

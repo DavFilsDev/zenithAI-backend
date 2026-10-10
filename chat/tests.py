@@ -147,7 +147,7 @@ class ProviderFailureTests(APITestCase):
         self.assertEqual(self.conversation.messages.first().role, 'user')
 
     def test_generate_raises_without_an_api_key(self):
-        with override_settings(GEMINI_API_KEY=''):
+        with override_settings(LLM_API_KEY=''):
             with self.assertRaises(LLMUnavailableError):
                 provider.generate('Hello', [])
 

@@ -2,11 +2,15 @@ from types import SimpleNamespace
 from typing import Sequence
 from unittest.mock import patch
 
+from django.core.exceptions import ImproperlyConfigured
 from django.conf import settings
 from django.test import SimpleTestCase, override_settings
 
 from .base import ChatMessage, Provider
 from .errors import LLMUnavailableError
+from .factory import build_provider, validate_config
+from .fallback import FallbackProvider
+from .gemini import GeminiProvider
 from .groq import GROQ_BASE_URL, GroqProvider
 
 
@@ -121,3 +125,79 @@ class GroqProviderTests(SimpleTestCase):
             mock_openai.return_value = FakeClient(FakeCompletions(None))
             self.assertIsNotNone(provider._client())
         mock_openai.assert_called_once_with(api_key='', base_url=GROQ_BASE_URL)
+
+
+class FailingProvider:
+    def generate(self, message, history):
+        raise LLMUnavailableError('down')
+
+    def stream(self, message, history):
+        raise LLMUnavailableError('down')
+        yield
+
+
+class FactoryTests(SimpleTestCase):
+    @override_settings(LLM_PROVIDER='gemini', LLM_FALLBACK_PROVIDER='')
+    def test_build_provider_returns_the_configured_provider(self):
+        provider = build_provider()
+        self.assertIsInstance(provider, GeminiProvider)
+
+    @override_settings(
+        LLM_PROVIDER='gemini',
+        LLM_MODEL='gemini-2.5-flash',
+        LLM_FALLBACK_PROVIDER='groq',
+    )
+    def test_build_provider_wraps_in_a_fallback_when_configured(self):
+        provider = build_provider()
+        self.assertIsInstance(provider, FallbackProvider)
+        self.assertIsInstance(provider.primary, GeminiProvider)
+        self.assertIsInstance(provider.fallback, GroqProvider)
+
+    def test_validate_config_rejects_unknown_providers(self):
+        with override_settings(LLM_PROVIDER='claude', LLM_API_KEY='x'):
+            with self.assertRaises(ImproperlyConfigured):
+                validate_config()
+
+    def test_validate_config_rejects_a_missing_key(self):
+        with override_settings(LLM_PROVIDER='gemini', LLM_API_KEY=''):
+            with self.assertRaisesMessage(ImproperlyConfigured, 'LLM_API_KEY'):
+                validate_config()
+
+    def test_validate_config_rejects_a_missing_fallback_key(self):
+        with override_settings(
+            LLM_PROVIDER='gemini',
+            LLM_API_KEY='x',
+            LLM_FALLBACK_PROVIDER='groq',
+            LLM_FALLBACK_API_KEY='',
+        ):
+            with self.assertRaisesMessage(ImproperlyConfigured, 'LLM_FALLBACK_API_KEY'):
+                validate_config()
+
+    def test_validate_config_accepts_a_complete_configuration(self):
+        with override_settings(
+            LLM_PROVIDER='groq',
+            LLM_API_KEY='x',
+            LLM_FALLBACK_PROVIDER='gemini',
+            LLM_FALLBACK_API_KEY='y',
+        ):
+            validate_config()
+
+
+class FallbackProviderTests(SimpleTestCase):
+    def test_generate_falls_back_when_the_primary_is_unavailable(self):
+        primary = FailingProvider()
+        fallback = FakeProvider()
+        provider = FallbackProvider(primary, fallback)
+        self.assertEqual(provider.generate('hi', []), 'answer for hi')
+
+    def test_generate_does_not_call_the_fallback_on_success(self):
+        primary = FakeProvider()
+        fallback = FailingProvider()
+        provider = FallbackProvider(primary, fallback)
+        self.assertEqual(provider.generate('hi', []), 'answer for hi')
+
+    def test_stream_falls_back_when_the_primary_is_unavailable(self):
+        primary = FailingProvider()
+        fallback = FakeProvider()
+        provider = FallbackProvider(primary, fallback)
+        self.assertEqual(''.join(provider.stream('hi', [])), 'fragment')

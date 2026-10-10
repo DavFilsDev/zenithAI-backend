@@ -21,15 +21,19 @@ class GeminiProvider:
         model: Optional[str] = None,
         config: Optional[Mapping] = None,
         system_prompt: Optional[str] = None,
+        api_key: Optional[str] = None,
     ):
-        self.model_name = model or settings.GEMINI_MODEL
-        self.config = dict(config or settings.GEMINI_CONFIG)
+        self.model_name = model or settings.LLM_MODEL
+        self.config = dict(config or {})
         self.system_prompt = system_prompt or settings.LLM_SYSTEM_PROMPT
+        self.api_key = api_key
         self.client = None
 
     def _client(self):
         if self.client is None:
-            self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
+            self.client = genai.Client(
+                api_key=self.api_key if self.api_key is not None else settings.LLM_API_KEY
+            )
         return self.client
 
     def _generation_config(self):

@@ -1,15 +1,9 @@
-from django.conf import settings
-
 from .models import Message
 from .providers import LLMUnavailableError, Provider
-from .providers.gemini import GeminiProvider
+from .providers.factory import build_provider
 
 
-provider: Provider = GeminiProvider(
-    model=settings.GEMINI_MODEL,
-    config=settings.GEMINI_CONFIG,
-    system_prompt=settings.LLM_SYSTEM_PROMPT,
-)
+provider: Provider = build_provider()
 
 
 def generate_assistant_reply(conversation, user_message):

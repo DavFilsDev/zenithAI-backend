@@ -156,9 +156,12 @@ Backend:
 | `ALLOWED_HOSTS` | Comma-separated host list |
 | `DATABASE_URL` or `DB_*` | Database connection |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated frontend origins |
-| `LLM_PROVIDER` | Active provider (`gemini`, `groq`) |
+| `LLM_PROVIDER` | Active provider (`gemini`, `groq`), `LLM_*` are the only LLM settings |
 | `LLM_API_KEY` | Free provider key |
 | `LLM_MODEL` | Model id |
+| `LLM_FALLBACK_PROVIDER` | Second provider used automatically when the primary is rate limited or unavailable |
+| `LLM_FALLBACK_API_KEY` | Key of the fallback provider |
+| `LLM_FALLBACK_MODEL` | Model id of the fallback provider |
 
 Frontend:
 
