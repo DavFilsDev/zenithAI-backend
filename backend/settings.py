@@ -149,6 +149,9 @@ REST_FRAMEWORK = {
     },
 }
 
+# Global daily message cap shared by all users
+DAILY_MESSAGE_CAP = int(os.getenv('DAILY_MESSAGE_CAP', '500'))
+
 # JWT Settings
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),

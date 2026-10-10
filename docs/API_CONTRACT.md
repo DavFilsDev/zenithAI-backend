@@ -3,7 +3,7 @@
 > **This contract is shared with the frontend repository and describes the TARGET state. Both repositories must keep an identical copy. Any change must be made in both.**
 
 Contract version: `v1`
-Status: partially implemented. All endpoints in §3 are live, including SSE streaming; per-IP and per-user throttling (§9) is live; the global daily cap (§9) and the provider circuit breaker are planned. The currently deployed API is documented in [`docs/api/api-documentation.md`](api/api-documentation.md).
+Status: partially implemented. All endpoints in §3 are live, including SSE streaming; the usage limits in §9 (per-IP and per-user throttling, and the global daily cap) are live. A provider circuit breaker (P2.10) is still planned; it is transparent to the API, so provider failures keep returning `503 llm_unavailable`. The currently deployed API is documented in [`docs/api/api-documentation.md`](api/api-documentation.md).
 
 ## 1. Product
 
@@ -165,6 +165,7 @@ Backend:
 | `LLM_FALLBACK_API_KEY` | Key of the fallback provider |
 | `LLM_FALLBACK_MODEL` | Model id of the fallback provider |
 | `LLM_PROMPT_BUDGET` | Token budget for the history sent with each request (default `4000`) |
+| `DAILY_MESSAGE_CAP` | Global maximum messages per day across all users (default `500`) |
 
 Frontend:
 

@@ -9,7 +9,7 @@ from rest_framework.views import APIView
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, ConversationListSerializer, MessageSerializer
 from .services import LLMUnavailableError, generate_assistant_reply, stream_assistant_reply
-from .throttles import MessageAnonThrottle, MessageUserThrottle
+from .throttles import DailyQuotaThrottle, MessageAnonThrottle, MessageUserThrottle
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
 
@@ -211,7 +211,7 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
 class MessageListCreateView(generics.ListCreateAPIView):
     serializer_class = MessageSerializer
     permission_classes = (permissions.IsAuthenticated,)
-    throttle_classes = (MessageUserThrottle, MessageAnonThrottle)
+    throttle_classes = (MessageUserThrottle, MessageAnonThrottle, DailyQuotaThrottle)
 
     def get_throttles(self):
         if self.request.method == 'POST':
@@ -262,7 +262,7 @@ class MessageListCreateView(generics.ListCreateAPIView):
             400: OpenApiResponse(description="Message field is required"),
             401: OpenApiResponse(description="Authentication required"),
             404: OpenApiResponse(description="Conversation not found or not owned by the caller"),
-            429: OpenApiResponse(description="Rate limit exceeded, see the `Retry-After` header"),
+            429: OpenApiResponse(description="Rate or quota limit exceeded (`rate_limited` / `quota_exhausted`), see the `Retry-After` header"),
             503: OpenApiResponse(description="The AI provider is unavailable"),
         },
     )
@@ -290,7 +290,7 @@ class MessageListCreateView(generics.ListCreateAPIView):
 
 class MessageStreamView(APIView):
     permission_classes = (permissions.IsAuthenticated,)
-    throttle_classes = (MessageUserThrottle, MessageAnonThrottle)
+    throttle_classes = (MessageUserThrottle, MessageAnonThrottle, DailyQuotaThrottle)
 
     def _get_owned_conversation(self):
         conversation = Conversation.objects.filter(
@@ -322,7 +322,7 @@ class MessageStreamView(APIView):
             400: OpenApiResponse(description="Message field is required"),
             401: OpenApiResponse(description="Authentication required"),
             404: OpenApiResponse(description="Conversation not found or not owned by the caller"),
-            429: OpenApiResponse(description="Rate limit exceeded, see the `Retry-After` header"),
+            429: OpenApiResponse(description="Rate or quota limit exceeded (`rate_limited` / `quota_exhausted`), see the `Retry-After` header"),
         },
     )
     def post(self, request, *args, **kwargs):

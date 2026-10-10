@@ -1,6 +1,8 @@
 import uuid
 
-from django.db import models
+from django.db import models, transaction
+from django.db.models import F
+from django.utils import timezone
 from users.models import User
 
 class Conversation(models.Model):
@@ -34,3 +36,31 @@ class Message(models.Model):
     
     def __str__(self):
         return f"{self.role}: {self.content[:50]}..."
+
+
+class DailyQuota(models.Model):
+    """A single row per day counting every message sent across all users."""
+
+    date = models.DateField(unique=True)
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['-date']
+
+    def __str__(self):
+        return f"{self.date}: {self.count}"
+
+    @classmethod
+    def try_consume(cls, cap):
+        """Count one message against today's quota, atomically.
+
+        Returns True when the message is allowed and the counter was incremented,
+        False when the cap is already reached.
+        """
+        today = timezone.localdate()
+        with transaction.atomic():
+            quota, _ = cls.objects.select_for_update().get_or_create(date=today)
+            if quota.count >= cap:
+                return False
+            cls.objects.filter(pk=quota.pk).update(count=F('count') + 1)
+            return True

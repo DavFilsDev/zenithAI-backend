@@ -961,11 +961,12 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "// Throttling is live: more than 10 sends in a minute returns 429.",
+                  "// Throttling is live: more than 10 sends in a minute returns 429 rate_limited,",
+                  "// and exceeding the daily cap returns 429 quota_exhausted.",
                   "if (pm.response.code === 429) {",
-                  "    pm.test(\"Error uses the rate_limited envelope\", function () {",
+                  "    pm.test(\"Error uses a 429 limit envelope\", function () {",
                   "        var jsonData = pm.response.json();",
-                  "        pm.expect(jsonData.error.code).to.eql(\"rate_limited\");",
+                  "        pm.expect([\"rate_limited\", \"quota_exhausted\"]).to.include(jsonData.error.code);",
                   "        pm.expect(jsonData.error.details).to.eql({});",
                   "    });",
                   "    pm.test(\"Retry-After header is present\", function () {",

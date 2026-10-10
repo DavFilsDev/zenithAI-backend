@@ -1,15 +1,17 @@
+from datetime import timedelta
 from uuid import UUID, uuid4
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import override_settings
+from django.utils import timezone
 from rest_framework.test import APITestCase
 
-from .models import Conversation, Message
+from .models import Conversation, DailyQuota, Message
 from .serializers import ConversationSerializer, MessageSerializer
 from .services import LLMUnavailableError, provider, stream_assistant_reply
-from .throttles import MessageAnonThrottle, MessageUserThrottle
+from .throttles import MessageAnonThrottle, MessageUserThrottle, seconds_until_midnight
 
 User = get_user_model()
 
@@ -442,3 +444,85 @@ class ThrottleTests(APITestCase):
         for _ in range(11):
             response = self.client.get(self._send_url())
             self.assertEqual(response.status_code, 200)
+
+
+@override_settings(DAILY_MESSAGE_CAP=2)
+class DailyQuotaTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(
+            email='quota@example.com',
+            username='quota-user',
+            password='Str0ng-Passw0rd!42',
+        )
+        self.conversation = Conversation.objects.create(user=self.user, title='Quota chat')
+        self.client.force_authenticate(user=self.user)
+
+    def _url(self, conversation=None):
+        conversation = conversation or self.conversation
+        return f'/api/v1/chat/conversations/{conversation.uuid}/messages/'
+
+    @patch('chat.services.provider.generate', return_value='ok')
+    def test_exhausting_the_cap_returns_quota_exhausted(self, mock_generate):
+        self.assertEqual(self.client.post(self._url(), {'message': 'one'}).status_code, 201)
+        self.assertEqual(self.client.post(self._url(), {'message': 'two'}).status_code, 201)
+
+        response = self.client.post(self._url(), {'message': 'three'})
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.data['error']['code'], 'quota_exhausted')
+        self.assertIn('quota', response.data['error']['message'].lower())
+        self.assertIn('Retry-After', response)
+        self.assertGreaterEqual(int(response['Retry-After']), 1)
+        self.assertLessEqual(int(response['Retry-After']), 86400)
+
+        self.assertEqual(DailyQuota.objects.get(date=timezone.localdate()).count, 2)
+
+    @patch('chat.services.provider.generate', return_value='ok')
+    def test_the_cap_is_shared_across_users(self, mock_generate):
+        other = User.objects.create_user(
+            email='quota-other@example.com',
+            username='quota-other',
+            password='Str0ng-Passw0rd!42',
+        )
+        other_conversation = Conversation.objects.create(user=other, title='Other chat')
+
+        self.assertEqual(self.client.post(self._url(), {'message': 'one'}).status_code, 201)
+        self.client.force_authenticate(user=other)
+        self.assertEqual(self.client.post(self._url(other_conversation), {'message': 'two'}).status_code, 201)
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post(self._url(), {'message': 'three'})
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.data['error']['code'], 'quota_exhausted')
+
+    @patch('chat.services.provider.generate', return_value='ok')
+    def test_the_counter_survives_an_in_memory_restart(self, mock_generate):
+        self.client.post(self._url(), {'message': 'one'})
+        self.client.post(self._url(), {'message': 'two'})
+
+        cache.clear()
+
+        response = self.client.post(self._url(), {'message': 'three'})
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.data['error']['code'], 'quota_exhausted')
+        self.assertTrue(DailyQuota.objects.filter(date=timezone.localdate(), count=2).exists())
+
+    @patch('chat.services.provider.generate', return_value='ok')
+    def test_a_new_day_starts_from_zero(self, mock_generate):
+        DailyQuota.objects.create(date=timezone.localdate() - timedelta(days=1), count=2)
+
+        response = self.client.post(self._url(), {'message': 'fresh day'})
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(DailyQuota.objects.get(date=timezone.localdate()).count, 1)
+
+    @patch('chat.services.provider.generate', return_value='ok')
+    def test_listing_messages_does_not_consume_the_quota(self, mock_generate):
+        for _ in range(3):
+            self.assertEqual(self.client.get(self._url()).status_code, 200)
+
+        self.assertFalse(DailyQuota.objects.exists())
+
+    def test_seconds_until_midnight_is_within_a_day(self):
+        self.assertGreaterEqual(seconds_until_midnight(), 1)
+        self.assertLessEqual(seconds_until_midnight(), 86400)
