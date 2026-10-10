@@ -116,6 +116,14 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# Cache (used by DRF throttling; LocMemCache is fine for a single instance)
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'zenith-ai',
+    }
+}
+
 # CORS Settings
 CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
 
@@ -135,6 +143,10 @@ REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_PAGINATION_CLASS': 'backend.pagination.StandardResultsSetPagination',
     'EXCEPTION_HANDLER': 'backend.exceptions.exception_handler',
+    'DEFAULT_THROTTLE_RATES': {
+        'messages_user': '10/min',
+        'messages_anon': '5/min',
+    },
 }
 
 # JWT Settings

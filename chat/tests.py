@@ -2,12 +2,14 @@ from uuid import UUID, uuid4
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.test import override_settings
 from rest_framework.test import APITestCase
 
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, MessageSerializer
 from .services import LLMUnavailableError, provider, stream_assistant_reply
+from .throttles import MessageAnonThrottle, MessageUserThrottle
 
 User = get_user_model()
 
@@ -391,3 +393,52 @@ class StreamingTests(APITestCase):
         response = self.client.post(self._url(), {'message': 'Hi'})
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.data['error']['code'], 'unauthorized')
+
+
+class ThrottleTests(APITestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(
+            email='throttle@example.com',
+            username='throttle-user',
+            password='Str0ng-Passw0rd!42',
+        )
+        self.conversation = Conversation.objects.create(user=self.user, title='Throttle chat')
+        self.client.force_authenticate(user=self.user)
+
+    def _send_url(self):
+        return f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/'
+
+    def _stream_url(self):
+        return f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/stream/'
+
+    def test_scopes_use_the_configured_rates(self):
+        self.assertEqual(MessageUserThrottle().rate, '10/min')
+        self.assertEqual(MessageAnonThrottle().rate, '5/min')
+
+    @patch('chat.services.provider.generate', return_value='ok')
+    def test_sending_past_the_user_limit_returns_429_with_retry_after(self, mock_generate):
+        for _ in range(10):
+            response = self.client.post(self._send_url(), {'message': 'Hi'})
+            self.assertEqual(response.status_code, 201)
+
+        response = self.client.post(self._send_url(), {'message': 'Hi'})
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.data['error']['code'], 'rate_limited')
+        self.assertIn('Retry-After', response)
+        self.assertGreaterEqual(int(response['Retry-After']), 1)
+        self.assertLessEqual(int(response['Retry-After']), 60)
+
+    @patch('chat.services.provider.generate', return_value='ok')
+    def test_the_limit_is_shared_between_send_and_stream(self, mock_generate):
+        for _ in range(10):
+            self.client.post(self._send_url(), {'message': 'Hi'})
+
+        response = self.client.post(self._stream_url(), {'message': 'Hi'})
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.data['error']['code'], 'rate_limited')
+
+    def test_listing_messages_is_not_throttled(self):
+        for _ in range(11):
+            response = self.client.get(self._send_url())
+            self.assertEqual(response.status_code, 200)

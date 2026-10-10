@@ -312,13 +312,16 @@ The model call goes to the provider selected by `LLM_PROVIDER` (Gemini or Groq o
 
 The failure body stays a plain machine-readable probe result, not the API error envelope, because this endpoint is consumed by monitoring, not by API clients.
 
+### Rate limits
+
+Sending and streaming messages are throttled. An authenticated caller may send 10 messages per minute per user, counting the non-streaming and streaming endpoint together; an anonymous caller is limited to 5 per minute per IP. Exceeding the limit returns `429` with the code `rate_limited` and a `Retry-After` header holding the number of seconds to wait. Listing messages and the other endpoints are not throttled.
+
 ## Not available yet
 
 The following are specified in [`docs/API_CONTRACT.md`](../API_CONTRACT.md) but not yet implemented.
 
 | Capability | Contract path |
 |---|---|
-| Per-IP and per-user throttling | `429` with `Retry-After`, code `rate_limited` |
 | Global daily cap | `429`, code `quota_exhausted` |
 
 ## Errors today
@@ -331,12 +334,13 @@ Errors use the shared envelope `{"error": {"code", "message", "details"}}`, with
 | `unauthorized` | 401 | `{"error": {"code": "unauthorized", "message": "Authentication credentials were not provided.", "details": {}}}` |
 | `not_found` | 404 | `{"error": {"code": "not_found", "message": "Conversation not found", "details": {}}}` |
 | `method_not_allowed` | 405 | `{"error": {"code": "method_not_allowed", "message": "Method \\"POST\\" not allowed.", "details": {}}}` |
+| `rate_limited` | 429 | `{"error": {"code": "rate_limited", "message": "Request was throttled. Expected available in 60 seconds.", "details": {}}}`, with a `Retry-After` header |
 | `llm_unavailable` | 503 | `{"error": {"code": "llm_unavailable", "message": "The AI service is temporarily unavailable. Please try again later.", "details": {}}}` |
 | `server_error` | 500 | `{"error": {"code": "server_error", "message": "An unexpected error occurred.", "details": {}}}` |
 
 ## Trying it locally
 
-The Postman collection in this directory, `zenith-ai-api.postman_collection.json` with the environment `zenith-ai-api.postman_environment.json`, covers every implemented JSON contract endpoint under `/api/v1`: registration, tokens, profile, logout, conversations, pagination, the nested messages resource and the health check. Requests run in order — register, login, create a conversation, then use the others — and `conversation_uuid` is captured from the create response instead of being hardcoded. Envelope errors are asserted for 400, 404, 405 and 401; sending a message needs a live provider key and accepts either `201` or a `503 llm_unavailable`. The SSE stream is not part of the collection; check it with the `curl -N` example above. A live `429 rate_limited` cannot be produced yet: throttling is task P2.8, and the collection's rate-limit request asserts the `rate_limited` envelope only once such a response actually appears.
+The Postman collection in this directory, `zenith-ai-api.postman_collection.json` with the environment `zenith-ai-api.postman_environment.json`, covers every implemented JSON contract endpoint under `/api/v1`: registration, tokens, profile, logout, conversations, pagination, the nested messages resource and the health check. Requests run in order — register, login, create a conversation, then use the others — and `conversation_uuid` is captured from the create response instead of being hardcoded. Envelope errors are asserted for 400, 404, 405 and 401; sending a message needs a live provider key and accepts either `201` or a `503 llm_unavailable`. The SSE stream is not part of the collection; check it with the `curl -N` example above. Rate limiting is live: sending more than 10 messages in a minute from the same account makes the collection's rate-limit request return the `429 rate_limited` envelope, which it asserts once it appears.
 
 The quickest manual check, with a fresh user:
 

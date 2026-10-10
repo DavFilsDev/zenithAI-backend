@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "ZenithAI API v1",
-    "description": "Contract collection for the ZenithAI API, versioned under /api/v1. Requests are meant to run in order: the Authentication folder logs in and saves access_token/refresh_token, the Conversations folder saves conversation_uuid from the create response, and Logout must run last because it blacklists the current refresh token.\n\nError responses are asserted with the shared envelope {error: {code, message, details}}. Sending a message needs a live Gemini key: a missing or invalid key returns 503 llm_unavailable.\n\nThrottling is not implemented yet (P2.8): no endpoint returns 429 today. The rate-limit request below asserts the rate_limited envelope only when a 429 is actually received, and a live 429 opens together with the P2.8 throttle scopes.",
+    "description": "Contract collection for the ZenithAI API, versioned under /api/v1. Requests are meant to run in order: the Authentication folder logs in and saves access_token/refresh_token, the Conversations folder saves conversation_uuid from the create response, and Logout must run last because it blacklists the current refresh token.\n\nError responses are asserted with the shared envelope {error: {code, message, details}}. Sending a message needs a live provider key (LLM_PROVIDER/LLM_API_KEY): a missing or invalid key returns 503 llm_unavailable.\n\nThrottling is live (P2.8): an authenticated account may send 10 messages per minute. Run the rate-limit request more than 10 times within a minute and it returns 429 rate_limited with a Retry-After header, which the request asserts once it appears.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "version": "2.0.0"
   },
@@ -933,19 +933,27 @@
           "response": []
         },
         {
-          "name": "Rate Limit - 429 (P2.8)",
+          "name": "Rate Limit - 429 (run repeatedly)",
           "request": {
-            "method": "GET",
+            "method": "POST",
             "header": [
               {
                 "key": "Authorization",
                 "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
               }
             ],
             "url": {
-              "raw": "{{base_url}}/api/v1/chat/conversations/",
+              "raw": "{{base_url}}/api/v1/chat/conversations/{{conversation_uuid}}/messages/",
               "host": ["{{base_url}}"],
-              "path": ["api", "v1", "chat", "conversations", ""]
+              "path": ["api", "v1", "chat", "conversations", "{{conversation_uuid}}", "messages", ""]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"message\": \"Rate limit probe\"\n}"
             }
           },
           "event": [
@@ -953,8 +961,7 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "// Throttling is not implemented yet (P2.8). When a 429 arrives,",
-                  "// assert the rate_limited envelope and Retry-After header.",
+                  "// Throttling is live: more than 10 sends in a minute returns 429.",
                   "if (pm.response.code === 429) {",
                   "    pm.test(\"Error uses the rate_limited envelope\", function () {",
                   "        var jsonData = pm.response.json();",
@@ -964,11 +971,11 @@
                   "    pm.test(\"Retry-After header is present\", function () {",
                   "        pm.expect(pm.response.headers.has(\"Retry-After\")).to.eql(true);",
                   "    });",
-                  "}",
-                  "",
-                  "pm.test(\"No 429 expected until P2.8 throttle scopes land\", function () {",
-                  "    pm.expect(pm.response.code).to.not.eql(429);",
-                  "});"
+                  "} else {",
+                  "    pm.test(\"Send succeeded or the provider was unavailable\", function () {",
+                  "        pm.expect([201, 503]).to.include(pm.response.code);",
+                  "    });",
+                  "}"
                 ],
                 "type": "text/javascript"
               }

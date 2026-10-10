@@ -3,7 +3,7 @@
 > **This contract is shared with the frontend repository and describes the TARGET state. Both repositories must keep an identical copy. Any change must be made in both.**
 
 Contract version: `v1`
-Status: partially implemented. All endpoints in §3 are live, including SSE streaming; throttling and the global daily cap (§9) and the provider circuit breaker are planned. The currently deployed API is documented in [`docs/api/api-documentation.md`](api/api-documentation.md).
+Status: partially implemented. All endpoints in §3 are live, including SSE streaming; per-IP and per-user throttling (§9) is live; the global daily cap (§9) and the provider circuit breaker are planned. The currently deployed API is documented in [`docs/api/api-documentation.md`](api/api-documentation.md).
 
 ## 1. Product
 
@@ -134,8 +134,10 @@ A resource that exists but belongs to someone else returns `404 not_found`, neve
 
 ## 9. Usage limits
 
-- Throttling per IP and per user.
-- A global daily cap shared by all users.
+- Throttling per IP and per user, applied to message sending and streaming.
+- An authenticated caller may send 10 messages per minute per user, counting both the non-streaming and the streaming endpoint together.
+- An anonymous caller is limited to 5 messages per minute per IP.
+- A global daily cap of 500 messages per day is shared by all users.
 - Exceeding a limit returns `429` with a `Retry-After` header and the code `rate_limited` or `quota_exhausted`.
 - There are no credits and no billing state on the user.
 

@@ -108,7 +108,7 @@ python manage.py spectacular --file schema.yml
 
 Authentication is a bearer token: `Authorization: Bearer <access_token>`. Access tokens last 15 minutes, refresh tokens 7 days, rotate on use and the rotated token is blacklisted.
 
-Conversation and message ids are UUID strings, list endpoints are paginated with a page size of 20, assistant replies can be streamed as Server-Sent Events, and there is no throttling yet. The full list of what is missing is in the improvement plan.
+Conversation and message ids are UUID strings, list endpoints are paginated with a page size of 20, assistant replies can be streamed as Server-Sent Events, and message sending is throttled per user and per IP. The full list of what is missing is in the improvement plan.
 
 ## Project structure
 
@@ -139,12 +139,13 @@ Implemented today:
 - Refresh-token rotation with blacklisting and 15-minute access tokens
 - Conversation and message CRUD with UUID identifiers, paginated lists
 - Message exchange and SSE streaming behind a provider interface (Gemini or Groq), with a configurable fallback provider and a bounded prompt budget
+- Per-user and per-IP throttling of message sending (`429 rate_limited` with `Retry-After`)
 - Health check, shared error envelope, Swagger UI, ReDoc and OpenAPI schema
 - All endpoints under the versioned base path `/api/v1`
 
 Planned, in the order of the roadmap:
 
-- Per-IP and per-user throttling and a global daily cap
+- A global daily cap shared by all users
 - A circuit breaker around the provider
 - Tooling: `pyproject.toml`, ruff, mypy, pytest, coverage, pre-commit
 - CI, containers, and deployment on free hosting with a free PostgreSQL database
