@@ -12,6 +12,7 @@ from .factory import build_provider, validate_config
 from .fallback import FallbackProvider
 from .gemini import GeminiProvider
 from .groq import GROQ_BASE_URL, GroqProvider
+from .prompt import estimate_tokens, windowed_history
 
 
 class FakeProvider:
@@ -201,3 +202,103 @@ class FallbackProviderTests(SimpleTestCase):
         fallback = FakeProvider()
         provider = FallbackProvider(primary, fallback)
         self.assertEqual(''.join(provider.stream('hi', [])), 'fragment')
+
+
+class PromptBudgetTests(SimpleTestCase):
+    def test_estimate_tokens_counts_roughly_four_chars_per_token(self):
+        self.assertEqual(estimate_tokens('a' * 400), 100)
+        self.assertEqual(estimate_tokens(''), 1)
+
+    def test_window_keeps_all_history_within_the_budget(self):
+        history = [
+            {'role': 'user', 'content': 'a' * 200},
+            {'role': 'assistant', 'content': 'b' * 200},
+        ]
+        with override_settings(LLM_PROMPT_BUDGET=4000):
+            self.assertEqual(windowed_history(history), history)
+
+    def test_window_drops_the_oldest_turns_first(self):
+        history = [
+            {'role': 'user', 'content': 'oldest ' * 2000},
+            {'role': 'user', 'content': 'recent ' * 20},
+            {'role': 'assistant', 'content': 'latest ' * 20},
+        ]
+        with override_settings(LLM_PROMPT_BUDGET=100):
+            window = windowed_history(history)
+        self.assertNotIn(history[0], window)
+        self.assertEqual(window, history[1:])
+
+    def test_window_size_stops_growing_with_history_length(self):
+        history = [
+            {'role': 'user', 'content': 'x' * 400} for _ in range(200)
+        ]
+        with override_settings(LLM_PROMPT_BUDGET=4000):
+            window = windowed_history(history)
+        self.assertLess(len(window), len(history))
+        self.assertLessEqual(
+            sum(estimate_tokens(item['content']) for item in window), 4000
+        )
+
+    def test_budget_is_read_from_settings(self):
+        history = [{'role': 'user', 'content': 'a' * 100}]
+        with override_settings(LLM_PROMPT_BUDGET=10):
+            self.assertEqual(windowed_history(history), [])
+        self.assertEqual(windowed_history(history), history)
+
+    @patch('chat.providers.gemini.genai.Client')
+    def test_gemini_prompt_uses_only_the_windowed_history(self, mock_client):
+        given = SimpleNamespace()
+        given.text = 'ok'
+        mock_client.return_value.models.generate_content.return_value = given
+
+        provider = GeminiProvider(api_key='x')
+        history = [
+            {'role': 'user', 'content': 'OLDEST ' * 4000},
+            {'role': 'assistant', 'content': 'a' * 400},
+            {'role': 'user', 'content': 'bbbb'},
+        ]
+        with override_settings(LLM_PROMPT_BUDGET=10):
+            provider.generate('New', history)
+
+        contents = mock_client.return_value.models.generate_content.call_args.kwargs['contents']
+        self.assertNotIn('OLDEST', contents)
+        self.assertIn('bbbb', contents)
+
+    @patch('chat.providers.gemini.genai.Client')
+    def test_gemini_prompt_size_is_bounded_even_for_a_huge_history(self, mock_client):
+        given = SimpleNamespace()
+        given.text = 'ok'
+        mock_client.return_value.models.generate_content.return_value = given
+
+        provider = GeminiProvider(api_key='x')
+        history = [
+            {'role': 'user', 'content': 'z' * 4000} for _ in range(50)
+        ]
+        with override_settings(LLM_PROMPT_BUDGET=4000):
+            provider.generate('New', history)
+
+        contents = mock_client.return_value.models.generate_content.call_args.kwargs['contents']
+        self.assertLess(len(contents), 40000)
+
+    @patch('chat.providers.groq.OpenAI')
+    def test_groq_sends_only_the_windowed_history_with_order_preserved(self, mock_openai):
+        response = SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='ok'))]
+        )
+        completions = FakeCompletions(response)
+        mock_openai.return_value = FakeClient(completions)
+
+        provider = GroqProvider(api_key='x')
+        history = [
+            {'role': 'user', 'content': 'OLDEST ' * 4000},
+            {'role': 'assistant', 'content': 'a' * 400},
+            {'role': 'user', 'content': 'bbbb'},
+        ]
+        with override_settings(LLM_PROMPT_BUDGET=10):
+            provider.generate('New', history)
+
+        messages = completions.calls[0]['messages']
+        self.assertEqual(
+            [m['content'] for m in messages],
+            [settings.LLM_SYSTEM_PROMPT, 'bbbb', 'New'],
+        )

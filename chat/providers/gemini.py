@@ -8,6 +8,7 @@ from google.genai import types
 
 from .base import ChatMessage, Provider
 from .errors import LLMUnavailableError
+from .prompt import windowed_history
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ class GeminiProvider:
         )
 
     def _build_prompt(self, message: str, history: Sequence[ChatMessage]) -> str:
+        history = windowed_history(history)
         if not history:
             return message
         parts = [

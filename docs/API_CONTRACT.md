@@ -162,6 +162,7 @@ Backend:
 | `LLM_FALLBACK_PROVIDER` | Second provider used automatically when the primary is rate limited or unavailable |
 | `LLM_FALLBACK_API_KEY` | Key of the fallback provider |
 | `LLM_FALLBACK_MODEL` | Model id of the fallback provider |
+| `LLM_PROMPT_BUDGET` | Token budget for the history sent with each request (default `4000`) |
 
 Frontend:
 

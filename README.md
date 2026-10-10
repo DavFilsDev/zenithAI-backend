@@ -66,6 +66,7 @@ python manage.py createsuperuser
 | `GEMINI_API_KEY` | Legacy Gemini key, kept until phase P2.11 |
 | `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL` | Provider selection, key and model for the chat endpoint |
 | `LLM_FALLBACK_PROVIDER`, `LLM_FALLBACK_API_KEY`, `LLM_FALLBACK_MODEL` | Second provider used automatically when the primary is rate limited |
+| `LLM_PROMPT_BUDGET` | Token budget for the history sent with each request (default 4000) |
 
 `CORS_ALLOWED_ORIGINS`, `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL` and the `LLM_FALLBACK_*` variables in `.env.example` are the configuration the shared contract requires in section 11. `CORS_ALLOWED_ORIGINS` is read from the environment in phase P0. `LLM_*` are active as of phase P2; the legacy `GEMINI_API_KEY` name is removed at P2.11.
 

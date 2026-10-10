@@ -7,6 +7,7 @@ from openai import OpenAI
 
 from .base import ChatMessage
 from .errors import LLMUnavailableError
+from .prompt import windowed_history
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,8 @@ class GroqProvider:
     def _messages(self, message: str, history: Sequence[ChatMessage]):
         messages = [{"role": "system", "content": self.system_prompt}]
         messages.extend(
-            {"role": item["role"], "content": item["content"]} for item in history
+            {"role": item["role"], "content": item["content"]}
+            for item in windowed_history(history)
         )
         messages.append({"role": "user", "content": message})
         return messages

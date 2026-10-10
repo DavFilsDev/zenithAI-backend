@@ -210,6 +210,8 @@ LLM_FALLBACK_PROVIDER = os.getenv('LLM_FALLBACK_PROVIDER', '')
 LLM_FALLBACK_API_KEY = os.getenv('LLM_FALLBACK_API_KEY', '')
 LLM_FALLBACK_MODEL = os.getenv('LLM_FALLBACK_MODEL', '')
 
+LLM_PROMPT_BUDGET = int(os.getenv('LLM_PROMPT_BUDGET', '4000'))
+
 if not DEBUG:
     from chat.providers.factory import validate_config
 
