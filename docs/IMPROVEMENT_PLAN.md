@@ -216,7 +216,7 @@ Effort: **S** under half a day, **M** one to three days, **L** more than three d
 - [ ] **P2.8** Add throttling per IP and per user. — *M* — DRF throttle scopes are configured, exceeding a limit returns `429 rate_limited` with `Retry-After`, and the limit is documented in the contract. — Depends on: P1.4.
 - [ ] **P2.9** Add a global daily cap. — *M* — a global counter caps requests per day across all users, exhaustion returns `429 quota_exhausted`, the counter resets daily, and the state survives a restart. — Depends on: P2.8.
 - [ ] **P2.10** Add a circuit breaker around the provider. — *M* — repeated provider failures open the circuit, subsequent calls fail fast with `llm_unavailable` instead of waiting for a timeout, and the circuit closes again after a cool-down. — Depends on: P2.7.
-- [ ] **P2.11** Remove the legacy Gemini settings names. — *S* — no `GEMINI_API_KEY` or `GEMINI_MODEL` setting remains, `.env.example` only carries the `LLM_*` names. — Depends on: P2.4.
+- [x] **P2.11** Remove the legacy Gemini settings names. — *S* — no `GEMINI_API_KEY` or `GEMINI_MODEL` setting remains, `.env.example` only carries the `LLM_*` names. — Depends on: P2.4.
 
 ### P3 — Quality
 

@@ -183,17 +183,6 @@ SPECTACULAR_SETTINGS = {
 # Custom User Model
 AUTH_USER_MODEL = 'users.User'
 
-# Google Gemini AI Settings
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
-GEMINI_MODEL = "gemini-2.5-flash"
-
-GEMINI_CONFIG = {
-    "temperature": 0.7,
-    "max_output_tokens": 2048,
-    "top_p": 0.95,
-    "top_k": 40,
-}
-
 LLM_SYSTEM_PROMPT = """You are a helpful AI assistant specialized in programming and software development.
 When answering coding questions:
 - Provide clear, well-commented code examples
