@@ -2,6 +2,17 @@
 
 Notable API and behavior changes are recorded here, following the versioning and deprecation policy in [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) section 12. Every breaking change announces a new contract version here before it ships.
 
+## Contract v1 — 2026-10-10
+
+Non-breaking additions to `v1`; existing endpoints and payloads are unchanged, so there is no new contract version.
+
+- Message sending and streaming now go through a single provider interface. `LLM_PROVIDER` selects Gemini or Groq, and the optional `LLM_FALLBACK_*` provider is used automatically when the first is unavailable.
+- Added `POST /api/v1/chat/conversations/{uuid}/messages/stream/`, which streams the assistant reply as Server-Sent Events (`token`, `done`, `error` events).
+- The conversation history sent to the provider is bounded by `LLM_PROMPT_BUDGET`.
+- Added per-IP and per-user throttling (`429 rate_limited`) and a global daily cap (`429 quota_exhausted`, `DAILY_MESSAGE_CAP`); both carry a `Retry-After` header.
+- Provider failures return `503 llm_unavailable`, with a `Retry-After` header when the provider reports one. A circuit breaker (`LLM_BREAKER_THRESHOLD`, `LLM_BREAKER_COOLDOWN`) fails fast during an outage and recovers automatically.
+- The legacy `GEMINI_API_KEY` and `GEMINI_MODEL` settings are removed; the `LLM_*` names are the only LLM configuration.
+
 ## Contract v1 — 2026-10-07
 
 The API surface moved to the shared contract described in [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md). The changelog starts with this baseline.
