@@ -202,6 +202,10 @@ When answering coding questions:
 - Suggest best practices for the language or framework being used
 Be concise, friendly, and educational in tone."""
 
+LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'gemini')
+LLM_API_KEY = os.getenv('LLM_API_KEY', '')
+LLM_MODEL = os.getenv('LLM_MODEL', 'gemini-2.5-flash')
+
 # Production security
 if not DEBUG:
     SECURE_SSL_REDIRECT = True
