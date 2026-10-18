@@ -131,6 +131,15 @@ uv run python manage.py test
 
 The suite lives in `users/tests.py`, `chat/tests.py`, `health/tests.py` and `backend/tests.py`: token payloads, refresh-token blacklisting, logout, conversation and message serialization, error envelopes, pagination and schemas. Expanding it to full coverage is task P3.6 of the improvement plan.
 
+## Code quality
+
+```bash
+uv run ruff check .
+uv run pre-commit run --all-files
+```
+
+`ruff` is configured in `pyproject.toml` (import order, naming, pyupgrade, bugbear, simplification and Django rules) at a 120-column limit. `.pre-commit-config.yaml` runs the same checks with autofix, plus YAML/TOML validation, end-of-file, trailing-whitespace, merge-conflict and large-file hooks. Install the hook once with `uv run pre-commit install`.
+
 ## Status & Roadmap
 
 Implemented today:
@@ -147,7 +156,7 @@ Implemented today:
 
 Planned, in the order of the roadmap:
 
-- Tooling: `pyproject.toml`, ruff, mypy, pytest, coverage, pre-commit
+- Tooling: mypy, pytest, coverage
 - CI, containers, and deployment on free hosting with a free PostgreSQL database
 
 Full detail, with effort, acceptance criteria and dependencies:
