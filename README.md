@@ -57,7 +57,6 @@ uv run python manage.py createsuperuser
 | Variable | Purpose |
 |---|---|
 | `SECRET_KEY` | Django signing key |
-| `DEBUG` | `True` in development, `False` in production |
 | `ALLOWED_HOSTS` | Comma-separated host list |
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | PostgreSQL connection |
 | `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL` | Provider selection, key and model for the chat endpoint |
@@ -71,6 +70,17 @@ uv run python manage.py createsuperuser
 The frontend runs on `http://localhost:5173` and calls the backend directly, with no proxy, so that origin is the one that must be allowed.
 
 Never commit `.env`. It is already ignored.
+
+## Settings modules
+
+`backend/settings/` is a package:
+
+- `base.py` holds the shared configuration and reads the environment.
+- `development.py` sets `DEBUG = True`; `manage.py` uses it by default.
+- `production.py` sets `DEBUG = False`, carries the HTTPS/HSTS hardening, requires `SECRET_KEY`, `DB_PASSWORD` and `CORS_ALLOWED_ORIGINS`, and validates the LLM configuration at startup; `wsgi.py` and `asgi.py` use it by default.
+- `test.py` sets `DEBUG = False`, fast password hashing and an in-memory email backend.
+
+Override the module with `DJANGO_SETTINGS_MODULE`, for example `DJANGO_SETTINGS_MODULE=backend.settings.test uv run python manage.py test`.
 
 ## API documentation
 
@@ -112,7 +122,7 @@ Conversation and message ids are UUID strings, list endpoints are paginated with
 ## Project structure
 
 ```
-backend/     settings and root URLconf
+backend/     settings package (base, development, production, test) and root URLconf
 users/       custom user model, registration, profile
 chat/        conversations, messages, and the provider-backed LLM service (chat/providers/)
 docs/        contract, conventions, improvement plan, API documentation
