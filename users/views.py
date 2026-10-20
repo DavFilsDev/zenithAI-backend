@@ -1,17 +1,18 @@
+from django.contrib.auth import get_user_model
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.serializers import TokenBlacklistSerializer, TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
-from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer, TokenBlacklistSerializer
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiResponse, OpenApiExample
-from django.contrib.auth import get_user_model
-from .serializers import UserSerializer, RegisterSerializer
+
+from .serializers import RegisterSerializer, UserSerializer
 
 User = get_user_model()
 
 class CustomTokenRefreshView(TokenRefreshView):
-    
+
     @extend_schema(
         summary="Refresh access token",
         description="Get a new access token using a valid refresh token",
@@ -56,7 +57,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 class CustomTokenObtainPairView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
-    
+
     @extend_schema(
         summary="Login - Get JWT Tokens",
         description="Authenticate with email/password to receive access and refresh tokens",
@@ -74,7 +75,7 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     permission_classes = (permissions.AllowAny,)
     serializer_class = RegisterSerializer
-    
+
     @extend_schema(
         summary="Register new user",
         description="Create a new user account with email and password",
@@ -116,10 +117,10 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
     serializer_class = UserSerializer
     http_method_names = ('get', 'patch', 'head', 'options')
     permission_classes = (permissions.IsAuthenticated,)
-    
+
     def get_object(self):
         return self.request.user
-    
+
     @extend_schema(
         summary="Get user profile",
         description="Retrieve the profile of the currently authenticated user",

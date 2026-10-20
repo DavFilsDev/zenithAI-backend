@@ -1,12 +1,11 @@
-from typing import Iterator, Optional, Sequence, Mapping
-
 import logging
+from collections.abc import Iterator, Mapping, Sequence
 
 from django.conf import settings
 from google import genai
 from google.genai import types
 
-from .base import ChatMessage, Provider
+from .base import ChatMessage
 from .errors import provider_error
 from .prompt import windowed_history
 
@@ -19,10 +18,10 @@ class GeminiProvider:
 
     def __init__(
         self,
-        model: Optional[str] = None,
-        config: Optional[Mapping] = None,
-        system_prompt: Optional[str] = None,
-        api_key: Optional[str] = None,
+        model: str | None = None,
+        config: Mapping | None = None,
+        system_prompt: str | None = None,
+        api_key: str | None = None,
     ):
         self.model_name = model or settings.LLM_MODEL
         self.config = dict(config or {})
@@ -67,7 +66,7 @@ class GeminiProvider:
             return response.text
         except Exception as e:
             logger.error(f"Gemini API error: {e}")
-            raise provider_error(e)
+            raise provider_error(e) from e
 
     def stream(self, message: str, history: Sequence[ChatMessage]) -> Iterator[str]:
         try:
@@ -81,4 +80,4 @@ class GeminiProvider:
                     yield chunk.text
         except Exception as e:
             logger.error(f"Gemini API error: {e}")
-            raise provider_error(e)
+            raise provider_error(e) from e

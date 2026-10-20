@@ -1,16 +1,16 @@
 import time
+from collections.abc import Sequence
 from types import SimpleNamespace
-from typing import Sequence
 from unittest.mock import patch
 
+from django.conf import settings
 from django.core.cache import cache
 from django.core.exceptions import ImproperlyConfigured
-from django.conf import settings
 from django.test import SimpleTestCase, override_settings
 
 from .base import ChatMessage, Provider
 from .breaker import CircuitBreaker, CircuitBreakerProvider
-from .errors import LLMUnavailableError, SAFE_PROVIDER_MESSAGE, provider_error
+from .errors import SAFE_PROVIDER_MESSAGE, LLMUnavailableError, provider_error
 from .factory import build_provider, validate_config
 from .fallback import FallbackProvider
 from .gemini import GeminiProvider
@@ -160,14 +160,14 @@ class FactoryTests(SimpleTestCase):
         self.assertIsInstance(provider.provider.fallback, GroqProvider)
 
     def test_validate_config_rejects_unknown_providers(self):
-        with override_settings(LLM_PROVIDER='claude', LLM_API_KEY='x'):
-            with self.assertRaises(ImproperlyConfigured):
-                validate_config()
+        with override_settings(LLM_PROVIDER='claude', LLM_API_KEY='x'), self.assertRaises(ImproperlyConfigured):
+            validate_config()
 
     def test_validate_config_rejects_a_missing_key(self):
-        with override_settings(LLM_PROVIDER='gemini', LLM_API_KEY=''):
-            with self.assertRaisesMessage(ImproperlyConfigured, 'LLM_API_KEY'):
-                validate_config()
+        with override_settings(LLM_PROVIDER='gemini', LLM_API_KEY=''), self.assertRaisesMessage(
+            ImproperlyConfigured, 'LLM_API_KEY'
+        ):
+            validate_config()
 
     def test_validate_config_rejects_a_missing_fallback_key(self):
         with override_settings(
@@ -175,9 +175,8 @@ class FactoryTests(SimpleTestCase):
             LLM_API_KEY='x',
             LLM_FALLBACK_PROVIDER='groq',
             LLM_FALLBACK_API_KEY='',
-        ):
-            with self.assertRaisesMessage(ImproperlyConfigured, 'LLM_FALLBACK_API_KEY'):
-                validate_config()
+        ), self.assertRaisesMessage(ImproperlyConfigured, 'LLM_FALLBACK_API_KEY'):
+            validate_config()
 
     def test_validate_config_accepts_a_complete_configuration(self):
         with override_settings(
@@ -417,7 +416,7 @@ class PromptBudgetTests(SimpleTestCase):
         )
 
 
-class ProviderRateLimited(Exception):
+class ProviderRateLimitedError(Exception):
     def __init__(self, status_code=429, retry_after='7', raw='secret provider text'):
         self.status_code = status_code
         self.response = SimpleNamespace(headers={'Retry-After': retry_after})
@@ -426,13 +425,13 @@ class ProviderRateLimited(Exception):
 
 class ProviderErrorMappingTests(SimpleTestCase):
     def test_rate_limit_maps_to_llm_unavailable_with_retry_after(self):
-        mapped = provider_error(ProviderRateLimited())
+        mapped = provider_error(ProviderRateLimitedError())
         self.assertIsInstance(mapped, LLMUnavailableError)
         self.assertEqual(mapped.retry_after, 7)
         self.assertEqual(str(mapped), SAFE_PROVIDER_MESSAGE)
 
     def test_raw_provider_text_never_reaches_the_message(self):
-        mapped = provider_error(ProviderRateLimited(raw='key sk-secret is invalid'))
+        mapped = provider_error(ProviderRateLimitedError(raw='key sk-secret is invalid'))
         self.assertNotIn('secret', str(mapped))
 
     def test_gemini_style_code_attribute_is_understood(self):
@@ -450,7 +449,7 @@ class ProviderErrorMappingTests(SimpleTestCase):
 
     @patch('chat.providers.gemini.genai.Client')
     def test_gemini_provider_propagates_retry_after(self, mock_client):
-        mock_client.return_value.models.generate_content.side_effect = ProviderRateLimited(retry_after='12')
+        mock_client.return_value.models.generate_content.side_effect = ProviderRateLimitedError(retry_after='12')
         provider = GeminiProvider(api_key='x')
         with self.assertRaises(LLMUnavailableError) as context:
             provider.generate('hi', [])
@@ -461,7 +460,7 @@ class ProviderErrorMappingTests(SimpleTestCase):
         completions = FakeCompletions(None)
 
         def boom(**kwargs):
-            raise ProviderRateLimited(retry_after='5')
+            raise ProviderRateLimitedError(retry_after='5')
 
         completions.create = boom
         mock_openai.return_value = FakeClient(completions)

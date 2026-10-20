@@ -1,7 +1,6 @@
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
-from .base import Provider
 from .breaker import CircuitBreaker, CircuitBreakerProvider
 from .fallback import FallbackProvider
 from .gemini import GeminiProvider

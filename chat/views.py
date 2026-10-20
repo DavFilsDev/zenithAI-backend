@@ -1,17 +1,19 @@
 import json
 import logging
 
-from rest_framework import generics, permissions, status, exceptions
 from django.db.models import Count
 from django.http import StreamingHttpResponse
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
+from rest_framework import exceptions, generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
 from .models import Conversation, Message
-from .serializers import ConversationSerializer, ConversationListSerializer, MessageSerializer
-from .services import LLMUnavailableError, generate_assistant_reply, stream_assistant_reply
+from .providers import LLMUnavailableError
+from .serializers import ConversationListSerializer, ConversationSerializer, MessageSerializer
+from .services import generate_assistant_reply, stream_assistant_reply
 from .throttles import DailyQuotaThrottle, MessageAnonThrottle, MessageUserThrottle
-from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
 
 logger = logging.getLogger(__name__)
 
@@ -22,13 +24,13 @@ def _sse(event, payload):
 class ConversationListView(generics.ListCreateAPIView):
     serializer_class = ConversationListSerializer
     permission_classes = (permissions.IsAuthenticated,)
-    
+
     def get_queryset(self):
         return Conversation.objects.filter(user=self.request.user).annotate(message_count=Count('messages'))
-    
+
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
-    
+
     @extend_schema(
         summary="List all conversations",
         description="Retrieve all conversations for the authenticated user, ordered by most recent",
@@ -60,7 +62,7 @@ class ConversationListView(generics.ListCreateAPIView):
     )
     def get(self, request, *args, **kwargs):
         return self.list(request, *args, **kwargs)
-    
+
     @extend_schema(
         summary="Create a new conversation",
         description="Create a new conversation with the specified title",
@@ -107,10 +109,10 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
     lookup_field = 'uuid'
     http_method_names = ('get', 'patch', 'delete', 'head', 'options')
     permission_classes = (permissions.IsAuthenticated,)
-    
+
     def get_queryset(self):
         return Conversation.objects.filter(user=self.request.user).annotate(message_count=Count('messages'))
-    
+
     @extend_schema(
         summary="Get conversation details",
         description="Retrieve a specific conversation with all its messages",
@@ -160,7 +162,7 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
     )
     def get(self, request, *args, **kwargs):
         return self.retrieve(request, *args, **kwargs)
-    
+
     @extend_schema(
         summary="Delete conversation",
         description="Delete a conversation and all its messages",
@@ -182,7 +184,7 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
     )
     def delete(self, request, *args, **kwargs):
         return self.destroy(request, *args, **kwargs)
-    
+
     @extend_schema(
         summary="Partially update conversation",
         description="Partially update a conversation title (PATCH)",
@@ -262,7 +264,12 @@ class MessageListCreateView(generics.ListCreateAPIView):
             400: OpenApiResponse(description="Message field is required"),
             401: OpenApiResponse(description="Authentication required"),
             404: OpenApiResponse(description="Conversation not found or not owned by the caller"),
-            429: OpenApiResponse(description="Rate or quota limit exceeded (`rate_limited` / `quota_exhausted`), see the `Retry-After` header"),
+            429: OpenApiResponse(
+                description=(
+                    "Rate or quota limit exceeded (`rate_limited` / `quota_exhausted`), "
+                    "see the `Retry-After` header"
+                )
+            ),
             503: OpenApiResponse(description="The AI provider is unavailable"),
         },
     )
@@ -322,7 +329,12 @@ class MessageStreamView(APIView):
             400: OpenApiResponse(description="Message field is required"),
             401: OpenApiResponse(description="Authentication required"),
             404: OpenApiResponse(description="Conversation not found or not owned by the caller"),
-            429: OpenApiResponse(description="Rate or quota limit exceeded (`rate_limited` / `quota_exhausted`), see the `Retry-After` header"),
+            429: OpenApiResponse(
+                description=(
+                    "Rate or quota limit exceeded (`rate_limited` / `quota_exhausted`), "
+                    "see the `Retry-After` header"
+                )
+            ),
         },
     )
     def post(self, request, *args, **kwargs):

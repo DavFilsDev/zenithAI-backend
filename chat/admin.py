@@ -1,5 +1,7 @@
 from django.contrib import admin
+
 from .models import Conversation, Message
+
 
 class MessageInline(admin.TabularInline):
     model = Message
@@ -14,7 +16,7 @@ class ConversationAdmin(admin.ModelAdmin):
     search_fields = ('title', 'user__email', 'user__username')
     readonly_fields = ('created_at', 'updated_at')
     inlines = [MessageInline]
-    
+
     def message_count(self, obj):
         return obj.messages.count()
     message_count.short_description = 'Number of Messages'
@@ -25,7 +27,7 @@ class MessageAdmin(admin.ModelAdmin):
     list_filter = ('role', 'created_at')
     search_fields = ('content', 'conversation__title', 'conversation__user__email')
     readonly_fields = ('created_at',)
-    
+
     def short_content(self, obj):
         return obj.content[:50] + '...' if len(obj.content) > 50 else obj.content
     short_content.short_description = 'Content'

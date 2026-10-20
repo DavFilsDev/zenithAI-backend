@@ -1,4 +1,5 @@
-from typing import Iterator, Protocol, Sequence, TypedDict, runtime_checkable
+from collections.abc import Iterator, Sequence
+from typing import Protocol, TypedDict, runtime_checkable
 
 
 class ChatMessage(TypedDict):

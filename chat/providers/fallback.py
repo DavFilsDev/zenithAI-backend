@@ -1,4 +1,4 @@
-from typing import Iterator, Sequence
+from collections.abc import Iterator, Sequence
 
 from .base import ChatMessage
 from .errors import LLMUnavailableError
