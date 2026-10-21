@@ -9,8 +9,6 @@ logger = logging.getLogger(__name__)
 
 
 class QuotaExhausted(APIException):
-    """The shared daily message quota is used up."""
-
     status_code = 429
     default_detail = 'The daily message quota has been exhausted. It resets at midnight.'
     default_code = 'quota_exhausted'

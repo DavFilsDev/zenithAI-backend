@@ -4,7 +4,6 @@ from pathlib import Path
 
 import dotenv
 
-# Load environment variables
 dotenv.load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -23,14 +22,12 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-    # Third party apps
     'rest_framework',
     'corsheaders',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'drf_spectacular',
 
-    # Local apps
     'users',
     'chat',
     'health',
@@ -67,7 +64,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'backend.wsgi.application'
 
-# Database
 DB_PASSWORD = os.getenv('DB_PASSWORD')
 
 DATABASES = {
@@ -81,7 +77,6 @@ DATABASES = {
     }
 }
 
-# Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -97,20 +92,17 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-# Internationalization
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
 
-# Static files
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Cache (used by DRF throttling; LocMemCache is fine for a single instance)
+# DRF throttling keeps its state here; LocMemCache is fine for a single instance.
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
@@ -118,12 +110,10 @@ CACHES = {
     }
 }
 
-# CORS Settings
 CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
 
 CORS_ALLOW_CREDENTIALS = True
 
-# REST Framework Settings
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
@@ -140,10 +130,8 @@ REST_FRAMEWORK = {
     },
 }
 
-# Global daily message cap shared by all users
 DAILY_MESSAGE_CAP = int(os.getenv('DAILY_MESSAGE_CAP', '500'))
 
-# JWT Settings
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
@@ -151,7 +139,6 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
 }
 
-# Spectacular settings
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Zenith AI API',
     'DESCRIPTION': '''
@@ -171,14 +158,12 @@ SPECTACULAR_SETTINGS = {
     'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,
 
-    # Swagger UI settings
     'SWAGGER_UI_SETTINGS': {
         'deepLinking': True,
         'persistAuthorization': True,
         'displayOperationId': True,
     },
 
-    # API metadata
     'TAGS': [
         {'name': 'Authentication', 'description': 'User registration and login'},
         {'name': 'Users', 'description': 'User profile management'},
@@ -186,7 +171,6 @@ SPECTACULAR_SETTINGS = {
     ],
 }
 
-# Custom User Model
 AUTH_USER_MODEL = 'users.User'
 
 LLM_SYSTEM_PROMPT = """You are a helpful AI assistant specialized in programming and software development.
