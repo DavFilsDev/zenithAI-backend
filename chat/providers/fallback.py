@@ -1,11 +1,11 @@
 from collections.abc import Iterator, Sequence
 
-from .base import ChatMessage
+from .base import ChatMessage, Provider
 from .errors import LLMUnavailableError
 
 
 class FallbackProvider:
-    def __init__(self, primary, fallback):
+    def __init__(self, primary: Provider, fallback: Provider) -> None:
         self.primary = primary
         self.fallback = fallback
 

@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Iterator, Mapping, Sequence
+from typing import Any, cast
 
 from django.conf import settings
 from openai import OpenAI
@@ -20,17 +21,17 @@ class GroqProvider:
     def __init__(
         self,
         model: str | None = None,
-        config: Mapping | None = None,
+        config: Mapping[str, Any] | None = None,
         system_prompt: str | None = None,
         api_key: str | None = None,
-    ):
+    ) -> None:
         self.model_name = model or settings.LLM_MODEL
-        self.config = dict(config or {})
+        self.config: dict[str, Any] = dict(config or {})
         self.system_prompt = system_prompt or settings.LLM_SYSTEM_PROMPT
         self.api_key = api_key
-        self.client = None
+        self.client: OpenAI | None = None
 
-    def _client(self):
+    def _client(self) -> OpenAI:
         if self.client is None:
             self.client = OpenAI(
                 api_key=self.api_key if self.api_key is not None else settings.LLM_API_KEY,
@@ -38,7 +39,7 @@ class GroqProvider:
             )
         return self.client
 
-    def _messages(self, message: str, history: Sequence[ChatMessage]):
+    def _messages(self, message: str, history: Sequence[ChatMessage]) -> list[dict[str, str]]:
         messages = [{"role": "system", "content": self.system_prompt}]
         messages.extend(
             {"role": item["role"], "content": item["content"]}
@@ -51,26 +52,26 @@ class GroqProvider:
         try:
             response = self._client().chat.completions.create(
                 model=self.model_name,
-                messages=self._messages(message, history),
+                messages=cast(Any, self._messages(message, history)),
                 temperature=self.config.get("temperature", 0.7),
                 max_tokens=self.config.get("max_output_tokens", 2048),
                 top_p=self.config.get("top_p", 0.95),
             )
-            return response.choices[0].message.content
+            return response.choices[0].message.content or ''
         except Exception as e:
             logger.error(f"Groq API error: {e}")
             raise provider_error(e) from e
 
     def stream(self, message: str, history: Sequence[ChatMessage]) -> Iterator[str]:
         try:
-            stream = self._client().chat.completions.create(
+            stream = cast(Any, self._client().chat.completions.create(
                 model=self.model_name,
-                messages=self._messages(message, history),
+                messages=cast(Any, self._messages(message, history)),
                 temperature=self.config.get("temperature", 0.7),
                 max_tokens=self.config.get("max_output_tokens", 2048),
                 top_p=self.config.get("top_p", 0.95),
                 stream=True,
-            )
+            ))
             for chunk in stream:
                 if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
                     yield chunk.choices[0].delta.content

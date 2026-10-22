@@ -1,13 +1,22 @@
 import json
 import logging
+from collections.abc import Iterator
+from typing import Any, cast
 
+from django.db.models import QuerySet
 from django.http import StreamingHttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
 from rest_framework import exceptions, generics, permissions, status
+from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.serializers import BaseSerializer
+from rest_framework.throttling import BaseThrottle
 from rest_framework.views import APIView
 
+from users.models import User
+
+from .models import Conversation, Message
 from .providers import LLMUnavailableError
 from .selectors import conversation_for, conversations_for, messages_for
 from .serializers import ConversationListSerializer, ConversationSerializer, MessageSerializer
@@ -17,13 +26,15 @@ from .throttles import DailyQuotaThrottle, MessageAnonThrottle, MessageUserThrot
 logger = logging.getLogger(__name__)
 
 
-def _sse(event, payload):
+def _sse(event: str, payload: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(payload)}\n\n"
 
 
 class OwnedConversationMixin:
-    def get_owned_conversation(self):
-        conversation = conversation_for(self.request.user, self.kwargs['conversation_id'])
+    kwargs: dict[str, Any]
+
+    def get_owned_conversation(self, request: Request) -> Conversation:
+        conversation = conversation_for(cast(User, request.user), self.kwargs['conversation_id'])
         if conversation is None:
             raise exceptions.NotFound('Conversation not found')
         return conversation
@@ -32,10 +43,10 @@ class ConversationListView(generics.ListCreateAPIView):
     serializer_class = ConversationListSerializer
     permission_classes = (permissions.IsAuthenticated,)
 
-    def get_queryset(self):
-        return conversations_for(self.request.user)
+    def get_queryset(self) -> QuerySet[Conversation]:
+        return conversations_for(cast(User, self.request.user))
 
-    def perform_create(self, serializer):
+    def perform_create(self, serializer: BaseSerializer) -> None:
         serializer.save(user=self.request.user)
 
     @extend_schema(
@@ -67,7 +78,7 @@ class ConversationListView(generics.ListCreateAPIView):
             ),
         ]
     )
-    def get(self, request, *args, **kwargs):
+    def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         return self.list(request, *args, **kwargs)
 
     @extend_schema(
@@ -108,7 +119,7 @@ class ConversationListView(generics.ListCreateAPIView):
             ),
         ]
     )
-    def post(self, request, *args, **kwargs):
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         return self.create(request, *args, **kwargs)
 
 class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -117,8 +128,8 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
     http_method_names = ('get', 'patch', 'delete', 'head', 'options')
     permission_classes = (permissions.IsAuthenticated,)
 
-    def get_queryset(self):
-        return conversations_for(self.request.user)
+    def get_queryset(self) -> QuerySet[Conversation]:
+        return conversations_for(cast(User, self.request.user))
 
     @extend_schema(
         summary="Get conversation details",
@@ -167,7 +178,7 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
             ),
         ]
     )
-    def get(self, request, *args, **kwargs):
+    def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         return self.retrieve(request, *args, **kwargs)
 
     @extend_schema(
@@ -189,7 +200,7 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
             ),
         }
     )
-    def delete(self, request, *args, **kwargs):
+    def delete(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         return self.destroy(request, *args, **kwargs)
 
     @extend_schema(
@@ -214,7 +225,7 @@ class ConversationDetailView(generics.RetrieveUpdateDestroyAPIView):
             ),
         ]
     )
-    def patch(self, request, *args, **kwargs):
+    def patch(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         return self.partial_update(request, *args, **kwargs)
 
 class MessageListCreateView(OwnedConversationMixin, generics.ListCreateAPIView):
@@ -222,13 +233,13 @@ class MessageListCreateView(OwnedConversationMixin, generics.ListCreateAPIView):
     permission_classes = (permissions.IsAuthenticated,)
     throttle_classes = (MessageUserThrottle, MessageAnonThrottle, DailyQuotaThrottle)
 
-    def get_throttles(self):
+    def get_throttles(self) -> list[BaseThrottle]:
         if self.request.method == 'POST':
             return [throttle() for throttle in self.throttle_classes]
         return []
 
-    def get_queryset(self):
-        return messages_for(self.get_owned_conversation())
+    def get_queryset(self) -> QuerySet[Message]:
+        return messages_for(self.get_owned_conversation(self.request))
 
     @extend_schema(
         summary="List messages of a conversation",
@@ -243,7 +254,7 @@ class MessageListCreateView(OwnedConversationMixin, generics.ListCreateAPIView):
             404: OpenApiResponse(description="Conversation not found or not owned by the caller"),
         },
     )
-    def get(self, request, *args, **kwargs):
+    def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         return self.list(request, *args, **kwargs)
 
     @extend_schema(
@@ -271,11 +282,11 @@ class MessageListCreateView(OwnedConversationMixin, generics.ListCreateAPIView):
             503: OpenApiResponse(description="The AI provider is unavailable"),
         },
     )
-    def post(self, request, *args, **kwargs):
-        user_message = request.data.get('message')
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        user_message = cast(dict[str, Any], request.data).get('message')
         if not user_message:
             raise exceptions.ValidationError('Message is required')
-        conversation = self.get_owned_conversation()
+        conversation = self.get_owned_conversation(self.request)
         try:
             ai_msg = generate_assistant_reply(conversation, user_message)
         except LLMUnavailableError as e:
@@ -326,14 +337,14 @@ class MessageStreamView(OwnedConversationMixin, APIView):
             ),
         },
     )
-    def post(self, request, *args, **kwargs):
-        user_message = request.data.get('message')
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> StreamingHttpResponse:
+        user_message = cast(dict[str, Any], request.data).get('message')
         if not user_message:
             raise exceptions.ValidationError('Message is required')
-        conversation = self.get_owned_conversation()
+        conversation = self.get_owned_conversation(self.request)
 
-        def event_stream():
-            state = {}
+        def event_stream() -> Iterator[str]:
+            state: dict[str, Any] = {}
             stream = stream_assistant_reply(conversation, user_message, state)
             try:
                 for fragment in stream:

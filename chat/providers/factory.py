@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
+from .base import Provider
 from .breaker import CircuitBreaker, CircuitBreakerProvider
 from .fallback import FallbackProvider
 from .gemini import GeminiProvider
@@ -9,7 +10,7 @@ from .groq import GroqProvider
 KNOWN_PROVIDERS = ('gemini', 'groq')
 
 
-def _build(name, api_key, model):
+def _build(name: str, api_key: str, model: str) -> Provider:
     if name == 'gemini':
         return GeminiProvider(api_key=api_key, model=model)
     if name == 'groq':
@@ -19,7 +20,7 @@ def _build(name, api_key, model):
     )
 
 
-def build_provider():
+def build_provider() -> Provider:
     provider = _build(settings.LLM_PROVIDER or 'gemini', settings.LLM_API_KEY, settings.LLM_MODEL)
     if settings.LLM_FALLBACK_PROVIDER:
         fallback = _build(
@@ -32,7 +33,7 @@ def build_provider():
     return CircuitBreakerProvider(provider, breaker)
 
 
-def validate_config():
+def validate_config() -> None:
     if settings.LLM_PROVIDER not in KNOWN_PROVIDERS:
         _build(settings.LLM_PROVIDER, settings.LLM_API_KEY, settings.LLM_MODEL)
     if not settings.LLM_API_KEY:

@@ -145,10 +145,13 @@ The suite lives in `users/tests.py`, `chat/tests.py`, `health/tests.py` and `bac
 
 ```bash
 uv run ruff check .
+uv run mypy .
 uv run pre-commit run --all-files
 ```
 
 `ruff` is configured in `pyproject.toml` (import order, naming, pyupgrade, bugbear, simplification and Django rules) at a 120-column limit. `.pre-commit-config.yaml` runs the same checks with autofix, plus YAML/TOML validation, end-of-file, trailing-whitespace, merge-conflict and large-file hooks. Install the hook once with `uv run pre-commit install`.
+
+`mypy` runs with the Django and DRF plugins (`django-stubs`) against `backend.settings.development`; test modules are exempt from the strict untyped-definition rule. Views, serializers, services, providers and models are annotated.
 
 ## Status & Roadmap
 
@@ -166,7 +169,7 @@ Implemented today:
 
 Planned, in the order of the roadmap:
 
-- Tooling: mypy, pytest, coverage
+- Tooling: pytest, coverage
 - CI, containers, and deployment on free hosting with a free PostgreSQL database
 
 Full detail, with effort, acceptance criteria and dependencies:

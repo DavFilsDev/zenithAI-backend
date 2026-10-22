@@ -17,7 +17,7 @@ class Conversation(models.Model):
     class Meta:
         ordering = ['-updated_at']
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.user.email} - {self.title}"
 
 class Message(models.Model):
@@ -36,7 +36,7 @@ class Message(models.Model):
     class Meta:
         ordering = ['created_at']
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.role}: {self.content[:50]}..."
 
 
@@ -49,11 +49,11 @@ class DailyQuota(models.Model):
     class Meta:
         ordering = ['-date']
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.date}: {self.count}"
 
     @classmethod
-    def try_consume(cls, cap):
+    def try_consume(cls, cap: int) -> bool:
         """Count one message against today's quota, atomically.
 
         Returns True when the message is allowed and the counter was incremented,

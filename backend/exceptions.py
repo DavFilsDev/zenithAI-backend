@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from django.conf import settings
 from rest_framework.exceptions import APIException
@@ -13,7 +14,7 @@ class QuotaExhausted(APIException):
     default_detail = 'The daily message quota has been exhausted. It resets at midnight.'
     default_code = 'quota_exhausted'
 
-    def __init__(self, retry_after=None):
+    def __init__(self, retry_after: int | float | None = None) -> None:
         self.retry_after = int(retry_after) if isinstance(retry_after, (int, float)) else None
         super().__init__()
 
@@ -39,11 +40,11 @@ _DEFAULT_MESSAGES = {
 }
 
 
-def _error_code(status_code):
+def _error_code(status_code: int) -> str:
     return _CODE_BY_STATUS.get(status_code, 'server_error')
 
 
-def _error_message(exc, response, code, status_code):
+def _error_message(exc: Exception, response: Response, code: str, status_code: int) -> str:
     detail = getattr(exc, 'detail', None)
     if isinstance(detail, str) and detail:
         return detail
@@ -54,13 +55,13 @@ def _error_message(exc, response, code, status_code):
     return _DEFAULT_MESSAGES.get(status_code, _DEFAULT_MESSAGES[500])
 
 
-def _error_details(exc, response, code):
+def _error_details(exc: Exception, response: Response, code: str) -> dict[str, Any]:
     if code == 'validation_error' and isinstance(response.data, dict):
         return response.data
     return {}
 
 
-def exception_handler(exc, context):
+def exception_handler(exc: Exception, context: dict[str, Any]) -> Response:
     response = drf_exception_handler(exc, context)
 
     if response is None:
@@ -73,7 +74,7 @@ def exception_handler(exc, context):
         )
 
     code = 'quota_exhausted' if isinstance(exc, QuotaExhausted) else _error_code(response.status_code)
-    headers = {}
+    headers: dict[str, str] = {}
     if code in ('rate_limited', 'quota_exhausted'):
         wait = getattr(exc, 'retry_after', None)
         if wait is None:

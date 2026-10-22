@@ -1,11 +1,16 @@
-from django.contrib.auth.models import AbstractUser, UserManager
+from __future__ import annotations
+
+from typing import Any, ClassVar, cast
+
+from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import UserManager as DjangoUserManager
 from django.db import models
 from django.db.models.functions import Lower
 
 
-class UserManager(UserManager):
-    def get_by_natural_key(self, username):
-        return self.get(**{f'{self.model.USERNAME_FIELD}__iexact': username})
+class UserManager(DjangoUserManager):
+    def get_by_natural_key(self, username: str | None) -> User:  # type: ignore[override]
+        return cast(User, self.get(email__iexact=username))
 
 class User(AbstractUser):
     email = models.EmailField(unique=True)
@@ -13,7 +18,7 @@ class User(AbstractUser):
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']
 
-    objects = UserManager()
+    objects: ClassVar[UserManager] = UserManager()
 
     class Meta:
         constraints = [
@@ -23,10 +28,10 @@ class User(AbstractUser):
             ),
         ]
 
-    def save(self, *args, **kwargs):
+    def save(self, *args: Any, **kwargs: Any) -> None:
         if self.email:
             self.email = self.email.lower()
         super().save(*args, **kwargs)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.email

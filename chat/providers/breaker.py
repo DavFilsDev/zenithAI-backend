@@ -2,7 +2,7 @@ from collections.abc import Iterator, Sequence
 
 from django.core.cache import cache
 
-from .base import ChatMessage
+from .base import ChatMessage, Provider
 from .errors import LLMUnavailableError
 
 
@@ -18,14 +18,14 @@ class CircuitBreaker:
     failures_key = 'llm_breaker_failures'
     open_key = 'llm_breaker_open'
 
-    def __init__(self, threshold, cooldown):
+    def __init__(self, threshold: int, cooldown: int) -> None:
         self.threshold = threshold
         self.cooldown = cooldown
 
-    def is_open(self):
+    def is_open(self) -> bool:
         return bool(cache.get(self.open_key))
 
-    def record_failure(self):
+    def record_failure(self) -> None:
         try:
             failures = cache.incr(self.failures_key)
         except ValueError:
@@ -34,7 +34,7 @@ class CircuitBreaker:
         if failures >= self.threshold:
             cache.set(self.open_key, True, timeout=self.cooldown)
 
-    def record_success(self):
+    def record_success(self) -> None:
         cache.delete(self.failures_key)
         cache.delete(self.open_key)
 
@@ -42,7 +42,7 @@ class CircuitBreaker:
 class CircuitBreakerProvider:
     """Wrap a provider so that an open breaker fails fast with ``llm_unavailable``."""
 
-    def __init__(self, provider, breaker):
+    def __init__(self, provider: Provider, breaker: CircuitBreaker) -> None:
         self.provider = provider
         self.breaker = breaker
 
@@ -61,7 +61,7 @@ class CircuitBreakerProvider:
         if self.breaker.is_open():
             raise LLMUnavailableError()
 
-        def chunks():
+        def chunks() -> Iterator[str]:
             try:
                 yield from self.provider.stream(message, history)
             except LLMUnavailableError:

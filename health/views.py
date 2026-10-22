@@ -3,6 +3,7 @@ import logging
 from django.db import connection
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import permissions, serializers
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -28,7 +29,7 @@ class HealthView(APIView):
             503: OpenApiResponse(response=HealthSerializer(), description="The database is unreachable"),
         },
     )
-    def get(self, request):
+    def get(self, request: Request) -> Response:
         try:
             with connection.cursor() as cursor:
                 cursor.execute('SELECT 1')

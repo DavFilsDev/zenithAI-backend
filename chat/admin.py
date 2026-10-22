@@ -17,9 +17,9 @@ class ConversationAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at', 'updated_at')
     inlines = [MessageInline]
 
-    def message_count(self, obj):
+    @admin.display(description='Number of Messages')
+    def message_count(self, obj: Conversation) -> int:
         return obj.messages.count()
-    message_count.short_description = 'Number of Messages'
 
 @admin.register(Message)
 class MessageAdmin(admin.ModelAdmin):
@@ -28,6 +28,6 @@ class MessageAdmin(admin.ModelAdmin):
     search_fields = ('content', 'conversation__title', 'conversation__user__email')
     readonly_fields = ('created_at',)
 
-    def short_content(self, obj):
+    @admin.display(description='Content')
+    def short_content(self, obj: Message) -> str:
         return obj.content[:50] + '...' if len(obj.content) > 50 else obj.content
-    short_content.short_description = 'Content'

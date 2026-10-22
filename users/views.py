@@ -1,11 +1,15 @@
+from typing import Any, cast
+
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
 from rest_framework import generics, permissions, status
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.serializers import TokenBlacklistSerializer, TokenObtainPairSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+from .models import User
 from .serializers import RegisterSerializer, UserSerializer
 
 
@@ -20,7 +24,7 @@ class CustomTokenRefreshView(TokenRefreshView):
             401: OpenApiResponse(description="Invalid or expired refresh token"),
         }
     )
-    def post(self, request, *args, **kwargs):
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         return super().post(request, *args, **kwargs)
 
 class LogoutView(APIView):
@@ -37,7 +41,7 @@ class LogoutView(APIView):
             401: OpenApiResponse(description="Invalid or expired refresh token"),
         },
     )
-    def post(self, request):
+    def post(self, request: Request) -> Response:
         serializer = TokenBlacklistSerializer(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)
@@ -46,11 +50,13 @@ class LogoutView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    def validate(self, attrs):
-        data = super().validate(attrs)
-        data['user_id'] = self.user.id
-        data['email'] = self.user.email
-        data['username'] = self.user.username
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        data: dict[str, Any] = super().validate(attrs)
+        user = self.user
+        assert user is not None
+        data['user_id'] = user.id
+        data['email'] = user.email
+        data['username'] = user.username
         return data
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -66,7 +72,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             401: OpenApiResponse(description="Invalid credentials"),
         }
     )
-    def post(self, request, *args, **kwargs):
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         return super().post(request, *args, **kwargs)
 
 class RegisterView(generics.CreateAPIView):
@@ -107,7 +113,7 @@ class RegisterView(generics.CreateAPIView):
             ),
         ],
     )
-    def post(self, request, *args, **kwargs):
+    def post(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         return super().post(request, *args, **kwargs)
 
 class UserProfileView(generics.RetrieveUpdateAPIView):
@@ -115,8 +121,8 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
     http_method_names = ('get', 'patch', 'head', 'options')
     permission_classes = (permissions.IsAuthenticated,)
 
-    def get_object(self):
-        return self.request.user
+    def get_object(self) -> User:
+        return cast(User, self.request.user)
 
     @extend_schema(
         summary="Get user profile",
@@ -143,7 +149,7 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
             ),
         ]
     )
-    def get(self, request, *args, **kwargs):
+    def get(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         return self.retrieve(request, *args, **kwargs)
 
     @extend_schema(
@@ -157,5 +163,5 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
             401: OpenApiResponse(description="Authentication required"),
         }
     )
-    def patch(self, request, *args, **kwargs):
+    def patch(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         return self.partial_update(request, *args, **kwargs)
