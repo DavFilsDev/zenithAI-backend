@@ -61,6 +61,19 @@ disallow_untyped_defs = false
 disallow_incomplete_defs = false
 check_untyped_defs = false
 
+[[tool.mypy.overrides]]
+module = ["factory", "factory.*"]
+ignore_missing_imports = true
+
 [tool.django-stubs]
 django_settings_module = "backend.settings.development"
 strict_settings = false
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "backend.settings.test"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+testpaths = ["users", "chat", "health", "backend"]
+
+[tool.coverage.run]
+source = ["users", "chat"]
+omit = ["*/tests.py", "*/migrations/*", "*/tests/*"]
