@@ -2,570 +2,521 @@ from datetime import timedelta
 from unittest.mock import patch
 from uuid import UUID, uuid4
 
-from django.contrib.auth import get_user_model
+import pytest
 from django.core.cache import cache
 from django.test import override_settings
+from django.urls import reverse
 from django.utils import timezone
-from rest_framework.test import APITestCase
+from rest_framework import status
 
-from .models import Conversation, DailyQuota, Message
+from .factories import ConversationFactory
+from .models import Conversation, DailyQuota
 from .providers import CircuitBreaker, CircuitBreakerProvider, LLMUnavailableError
 from .serializers import ConversationSerializer, MessageSerializer
 from .services import provider, stream_assistant_reply
 from .throttles import MessageAnonThrottle, MessageUserThrottle, seconds_until_midnight
 
-User = get_user_model()
+pytestmark = pytest.mark.django_db
 
 
-class MessagePayloadTests(APITestCase):
-    def setUp(self):
-        self.user = User.objects.create_user(
-            email='chatter@example.com',
-            username='chatter',
-            password='Str0ng-Passw0rd!42',
-        )
-        self.conversation = Conversation.objects.create(
-            user=self.user,
-            title='Test chat',
-        )
-        self.message = Message.objects.create(
-            conversation=self.conversation,
-            role='assistant',
-            content='Hello',
-        )
-
-    def test_message_serializer_has_no_token_count(self):
-        payload = MessageSerializer(self.message).data
-        self.assertNotIn('tokens', payload)
-        self.assertEqual(payload['role'], 'assistant')
-
-    def test_conversation_payload_messages_have_no_token_count(self):
-        payload = ConversationSerializer(self.conversation).data
-        message = next(item for item in payload['messages'])
-        self.assertNotIn('tokens', message)
-        self.assertEqual(message['content'], 'Hello')
+@pytest.fixture(autouse=True)
+def clear_cache():
+    cache.clear()
+    yield
+    cache.clear()
 
 
-class UuidPayloadTests(APITestCase):
-    def setUp(self):
-        self.user = User.objects.create_user(
-            email='uuid-chatter@example.com',
-            username='uuid-chatter',
-            password='Str0ng-Passw0rd!42',
-        )
-        self.conversation = Conversation.objects.create(
-            user=self.user,
-            title='UUID chat',
-        )
-        self.message = Message.objects.create(
-            conversation=self.conversation,
-            role='assistant',
-            content='Hello',
-        )
-
-    def test_payload_uses_uuid_instead_of_integer_id(self):
-        conversation_payload = ConversationSerializer(self.conversation).data
-        message_payload = MessageSerializer(self.message).data
-        UUID(conversation_payload['uuid'])
-        UUID(message_payload['uuid'])
-        self.assertNotIn('id', conversation_payload)
-        self.assertNotIn('id', message_payload)
-
-    def test_integer_and_malformed_ids_return_404(self):
-        self.client.force_authenticate(user=self.user)
-        self.assertEqual(
-            self.client.get(f'/api/v1/chat/conversations/{self.conversation.id}/').status_code,
-            404,
-        )
-        self.assertEqual(
-            self.client.get('/api/v1/chat/conversations/not-a-uuid/').status_code,
-            404,
-        )
-
-    def test_uuid_detail_returns_200(self):
-        self.client.force_authenticate(user=self.user)
-        url = f'/api/v1/chat/conversations/{self.conversation.uuid}/'
-        response = self.client.get(url)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(UUID(response.data['uuid']), self.conversation.uuid)
-
-    def test_detail_payload_message_count_matches_the_actual_count(self):
-        self.client.force_authenticate(user=self.user)
-        response = self.client.get(f'/api/v1/chat/conversations/{self.conversation.uuid}/')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['message_count'], self.conversation.messages.count())
-        self.assertEqual(self.conversation.messages.count(), 1)
+def conversation_url(conversation: Conversation) -> str:
+    return reverse('chat_v1:conversation-detail', kwargs={'uuid': conversation.uuid})
 
 
-class ListPayloadTests(APITestCase):
-    def setUp(self):
-        self.user = User.objects.create_user(
-            email='list@example.com',
-            username='list-user',
-            password='Str0ng-Passw0rd!42',
-        )
-        self.conversation = Conversation.objects.create(user=self.user, title='List chat')
-        Message.objects.create(conversation=self.conversation, role='user', content='Hi')
-        Message.objects.create(conversation=self.conversation, role='assistant', content='Hello back')
-        self.client.force_authenticate(user=self.user)
-
-    def test_list_payload_is_lean(self):
-        response = self.client.get('/api/v1/chat/conversations/')
-        self.assertEqual(response.status_code, 200)
-        item = response.data['results'][0]
-        self.assertNotIn('messages', item)
-        self.assertEqual(item['message_count'], 2)
-        UUID(item['uuid'])
-        self.assertEqual(response.data['count'], 1)
-        self.assertIsNone(response.data['next'])
-        self.assertIsNone(response.data['previous'])
-
-    def test_list_uses_a_constant_number_of_queries(self):
-        with self.assertNumQueries(2):
-            response = self.client.get('/api/v1/chat/conversations/')
-        self.assertEqual(response.status_code, 200)
+def messages_url(conversation: Conversation) -> str:
+    return reverse('chat_v1:conversation-messages', kwargs={'conversation_id': conversation.uuid})
 
 
-class ProviderFailureTests(APITestCase):
-    def setUp(self):
-        self.user = User.objects.create_user(
-            email='provider@example.com',
-            username='provider-user',
-            password='Str0ng-Passw0rd!42',
-        )
-        self.conversation = Conversation.objects.create(user=self.user, title='Provider chat')
-        self.client.force_authenticate(user=self.user)
+def stream_url(conversation: Conversation) -> str:
+    return reverse('chat_v1:conversation-messages-stream', kwargs={'conversation_id': conversation.uuid})
 
-    @patch(
-        'chat.services.provider.generate',
-        side_effect=LLMUnavailableError('The AI service is temporarily unavailable. Please try again later.'),
+
+def stream_body(response) -> str:
+    return b''.join(response.streaming_content).decode()
+
+
+def test_message_serializer_has_no_token_count(message):
+    payload = MessageSerializer(message).data
+
+    assert 'tokens' not in payload
+    assert payload['role'] == message.role
+
+
+def test_conversation_payload_messages_have_no_token_count(conversation, message):
+    payload = ConversationSerializer(conversation).data
+    nested = next(item for item in payload['messages'])
+
+    assert 'tokens' not in nested
+    assert nested['content'] == message.content
+
+
+def test_payload_uses_uuid_instead_of_integer_id(conversation, message):
+    conversation_payload = ConversationSerializer(conversation).data
+    message_payload = MessageSerializer(message).data
+
+    UUID(conversation_payload['uuid'])
+    UUID(message_payload['uuid'])
+    assert 'id' not in conversation_payload
+    assert 'id' not in message_payload
+
+
+def test_model_strings(conversation, message):
+    quota = DailyQuota.objects.create(date=timezone.localdate(), count=2)
+
+    assert str(conversation) == f'{conversation.user.email} - {conversation.title}'
+    assert str(message).startswith(f'{message.role}: ')
+    assert str(quota) == f'{quota.date}: 2'
+
+
+def test_admin_helpers(conversation, message):
+    from .admin import ConversationAdmin, MessageAdmin
+
+    assert ConversationAdmin.message_count(None, conversation) == 1
+    assert MessageAdmin.short_content(None, message) == message.content
+
+
+def test_list_is_paginated_and_lean(auth_client, conversation, message):
+    response = auth_client.get(reverse('chat_v1:conversation-list'))
+
+    assert response.status_code == status.HTTP_200_OK
+    item = response.data['results'][0]
+    assert 'messages' not in item
+    assert item['message_count'] == 1
+    UUID(item['uuid'])
+    assert response.data['count'] == 1
+    assert response.data['next'] is None
+    assert response.data['previous'] is None
+
+
+def test_list_uses_a_constant_number_of_queries(auth_client, conversation, django_assert_num_queries):
+    with django_assert_num_queries(2):
+        response = auth_client.get(reverse('chat_v1:conversation-list'))
+
+    assert response.status_code == status.HTTP_200_OK
+
+
+def test_create_conversation(auth_client, user):
+    response = auth_client.post(reverse('chat_v1:conversation-list'), {'title': 'New chat'})
+
+    assert response.status_code == status.HTTP_201_CREATED
+    conversation = Conversation.objects.get(uuid=response.data['uuid'])
+    assert conversation.user == user
+    assert conversation.title == 'New chat'
+    assert response.data['message_count'] == 0
+
+
+def test_create_conversation_requires_a_title(auth_client):
+    response = auth_client.post(reverse('chat_v1:conversation-list'), {})
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data['error']['code'] == 'validation_error'
+    assert 'title' in response.data['error']['details']
+
+
+def test_create_conversation_requires_authentication(api_client):
+    response = api_client.post(reverse('chat_v1:conversation-list'), {'title': 'New chat'})
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.data['error']['code'] == 'unauthorized'
+
+
+def test_detail_returns_the_conversation(auth_client, conversation, message):
+    response = auth_client.get(conversation_url(conversation))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert UUID(response.data['uuid']) == conversation.uuid
+    assert response.data['message_count'] == 1
+
+
+def test_detail_unknown_conversation_returns_not_found(auth_client):
+    response = auth_client.get(reverse('chat_v1:conversation-detail', kwargs={'uuid': uuid4()}))
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.data['error']['code'] == 'not_found'
+
+
+def test_detail_wrong_owner_returns_not_found(auth_client, other_conversation):
+    response = auth_client.get(conversation_url(other_conversation))
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_detail_integer_and_malformed_ids_return_404(auth_client, conversation):
+    integer = auth_client.get(f'/api/v1/chat/conversations/{conversation.id}/')
+    malformed = auth_client.get('/api/v1/chat/conversations/not-a-uuid/')
+
+    assert integer.status_code == status.HTTP_404_NOT_FOUND
+    assert malformed.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_patch_updates_the_title(auth_client, conversation):
+    response = auth_client.patch(conversation_url(conversation), {'title': 'Renamed'})
+
+    assert response.status_code == status.HTTP_200_OK
+    conversation.refresh_from_db()
+    assert conversation.title == 'Renamed'
+
+
+def test_patch_wrong_owner_returns_not_found(auth_client, other_conversation):
+    response = auth_client.patch(conversation_url(other_conversation), {'title': 'Renamed'})
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_delete_removes_the_conversation(auth_client, conversation):
+    response = auth_client.delete(conversation_url(conversation))
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert not Conversation.objects.filter(pk=conversation.pk).exists()
+
+
+def test_delete_wrong_owner_returns_not_found(auth_client, other_conversation):
+    response = auth_client.delete(conversation_url(other_conversation))
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert Conversation.objects.filter(pk=other_conversation.pk).exists()
+
+
+def test_unauthenticated_conversation_requests_return_unauthorized(api_client, conversation):
+    responses = (
+        api_client.get(reverse('chat_v1:conversation-list')),
+        api_client.get(conversation_url(conversation)),
+        api_client.get(messages_url(conversation)),
     )
-    def test_provider_failure_returns_503_and_persists_nothing(self, mock_generate):
-        response = self.client.post(
-            f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/',
-            {'message': 'Hello'},
-        )
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.data['error']['code'], 'llm_unavailable')
-        self.assertEqual(self.conversation.messages.filter(role='assistant').count(), 0)
-        self.assertEqual(self.conversation.messages.count(), 1)
-        self.assertEqual(self.conversation.messages.first().role, 'user')
-        self.assertNotIn('Retry-After', response.headers)
 
-    @patch(
-        'chat.services.provider.generate',
-        side_effect=LLMUnavailableError(
-            'The AI service is temporarily unavailable. Please try again later.',
-            retry_after=42,
-        ),
+    for response in responses:
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        assert response.data['error']['code'] == 'unauthorized'
+
+
+def test_post_and_put_on_detail_return_method_not_allowed(auth_client, conversation):
+    post = auth_client.post(conversation_url(conversation), {})
+    put = auth_client.put(conversation_url(conversation), {'title': 'Renamed'})
+
+    assert post.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+    assert post.data['error']['code'] == 'method_not_allowed'
+    assert put.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+    assert put.data['error']['code'] == 'method_not_allowed'
+
+
+def test_list_messages(auth_client, conversation, message):
+    response = auth_client.get(messages_url(conversation))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data['count'] == 1
+    assert response.data['results'][0]['role'] == message.role
+
+
+def test_list_messages_unknown_conversation_returns_not_found(auth_client):
+    response = auth_client.get(reverse('chat_v1:conversation-messages', kwargs={'conversation_id': uuid4()}))
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_list_messages_wrong_owner_returns_not_found(auth_client, other_conversation):
+    response = auth_client.get(messages_url(other_conversation))
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+@patch('chat.services.provider.generate', return_value='Hello back')
+def test_post_creates_both_messages_and_returns_the_assistant_message(
+    mock_generate, auth_client, conversation, message
+):
+    response = auth_client.post(messages_url(conversation), {'message': 'How are you?'})
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.data['role'] == 'assistant'
+    assert response.data['content'] == 'Hello back'
+    assert conversation.messages.count() == 3
+    assert conversation.messages.filter(role='user').count() == 2
+
+
+def test_post_requires_a_message(auth_client, conversation):
+    response = auth_client.post(messages_url(conversation), {})
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data['error']['code'] == 'validation_error'
+    assert response.data['error']['message'] == 'Message is required'
+
+
+def test_post_unknown_conversation_returns_not_found(auth_client):
+    response = auth_client.post(
+        reverse('chat_v1:conversation-messages', kwargs={'conversation_id': uuid4()}),
+        {'message': 'Hi'},
     )
-    def test_rate_limited_provider_forwards_retry_after(self, mock_generate):
-        response = self.client.post(
-            f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/',
-            {'message': 'Hello'},
-        )
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.data['error']['code'], 'llm_unavailable')
-        self.assertEqual(response.headers['Retry-After'], '42')
 
-    def test_generate_raises_without_an_api_key(self):
-        with override_settings(LLM_API_KEY=''), self.assertRaises(LLMUnavailableError):
-            provider.generate('Hello', [])
+    assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
-class ErrorEnvelopeTests(APITestCase):
-    def setUp(self):
-        self.user = User.objects.create_user(
-            email='env@example.com',
-            username='env-user',
-            password='Str0ng-Passw0rd!42',
-        )
-        self.conversation = Conversation.objects.create(user=self.user, title='Env chat')
-        self.client.force_authenticate(user=self.user)
+def test_post_wrong_owner_returns_not_found(auth_client, other_conversation):
+    response = auth_client.post(messages_url(other_conversation), {'message': 'Hi'})
 
-    def test_missing_message_returns_validation_error_envelope(self):
-        response = self.client.post(
-            f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/',
-            {},
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.data['error']['code'], 'validation_error')
-        self.assertEqual(response.data['error']['message'], 'Message is required')
-        self.assertEqual(response.data['error']['details'], {})
+    assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_unknown_conversation_returns_not_found_envelope(self):
-        response = self.client.post(
-            f'/api/v1/chat/conversations/{uuid4()}/messages/',
-            {'message': 'Hello'},
-        )
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.data['error']['code'], 'not_found')
-        self.assertEqual(response.data['error']['message'], 'Conversation not found')
 
-    def test_post_to_conversation_detail_returns_method_not_allowed_envelope(self):
-        response = self.client.post(f'/api/v1/chat/conversations/{self.conversation.uuid}/', {})
-        self.assertEqual(response.status_code, 405)
-        self.assertEqual(response.data['error']['code'], 'method_not_allowed')
+@patch(
+    'chat.services.provider.generate',
+    side_effect=LLMUnavailableError('The AI service is temporarily unavailable. Please try again later.'),
+)
+def test_provider_failure_returns_503_and_persists_only_the_user_message(mock_generate, auth_client, conversation):
+    response = auth_client.post(messages_url(conversation), {'message': 'Hello'})
 
-    @override_settings(DEBUG=False)
-    @patch(
-        'chat.services.provider.generate',
-        side_effect=RuntimeError('boom'),
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert response.data['error']['code'] == 'llm_unavailable'
+    assert conversation.messages.filter(role='assistant').count() == 0
+    assert conversation.messages.count() == 1
+    assert conversation.messages.first().role == 'user'
+    assert 'Retry-After' not in response.headers
+
+
+@patch(
+    'chat.services.provider.generate',
+    side_effect=LLMUnavailableError(
+        'The AI service is temporarily unavailable. Please try again later.',
+        retry_after=42,
+    ),
+)
+def test_provider_failure_forwards_retry_after(mock_generate, auth_client, conversation):
+    response = auth_client.post(messages_url(conversation), {'message': 'Hello'})
+
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert response.headers['Retry-After'] == '42'
+
+
+def test_generate_raises_without_an_api_key():
+    with override_settings(LLM_API_KEY=''), pytest.raises(LLMUnavailableError):
+        provider.generate('Hello', [])
+
+
+@override_settings(DEBUG=False)
+@patch('chat.services.provider.generate', side_effect=RuntimeError('boom'))
+def test_unexpected_error_returns_server_error_envelope(mock_generate, auth_client, conversation):
+    response = auth_client.post(messages_url(conversation), {'message': 'Hello'})
+
+    assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+    assert response.data['error']['code'] == 'server_error'
+
+
+@patch('chat.services.provider.stream', return_value=iter(['Hel', 'lo']))
+def test_stream_happy_path_emits_tokens_then_done_and_persists_once(mock_stream, auth_client, conversation):
+    response = auth_client.post(stream_url(conversation), {'message': 'Hi'})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response['Content-Type'] == 'text/event-stream'
+    body = stream_body(response)
+
+    assistant = conversation.messages.get(role='assistant')
+    assert assistant.content == 'Hello'
+    assert 'event: token\ndata: {"content": "Hel"}\n\n' in body
+    assert 'event: token\ndata: {"content": "lo"}\n\n' in body
+    assert 'event: done\n' in body
+    assert f'"message_id": "{assistant.uuid}"' in body
+    assert f'"conversation_id": "{conversation.uuid}"' in body
+    assert conversation.messages.filter(role='user').count() == 1
+    assert conversation.messages.filter(role='assistant').count() == 1
+
+
+@patch('chat.services.provider.stream', return_value=iter(['a', 'b', 'c']))
+def test_disconnect_mid_stream_leaves_no_assistant_row(mock_stream, conversation):
+    state = {}
+    generator = stream_assistant_reply(conversation, 'Hi', state)
+    assert next(generator) == 'a'
+    generator.close()
+
+    assert conversation.messages.filter(role='assistant').count() == 0
+    assert conversation.messages.filter(role='user').count() == 1
+    assert 'assistant_message' not in state
+
+
+def test_provider_error_mid_stream_emits_error_and_persists_no_assistant(auth_client, conversation):
+    def failing_stream(message, history):
+        yield 'partial'
+        raise LLMUnavailableError('The AI service is temporarily unavailable. Please try again later.')
+
+    with patch('chat.services.provider.stream', side_effect=failing_stream):
+        response = auth_client.post(stream_url(conversation), {'message': 'Hi'})
+        body = stream_body(response)
+
+    assert 'event: token\ndata: {"content": "partial"}\n\n' in body
+    assert 'event: error\n' in body
+    assert '"code": "llm_unavailable"' in body
+    assert conversation.messages.filter(role='assistant').count() == 0
+    assert conversation.messages.filter(role='user').count() == 1
+
+
+@patch('chat.services.provider.stream', side_effect=RuntimeError('boom'))
+def test_stream_unexpected_error_emits_server_error(mock_stream, auth_client, conversation):
+    response = auth_client.post(stream_url(conversation), {'message': 'Hi'})
+    body = stream_body(response)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert 'event: error\n' in body
+    assert '"code": "server_error"' in body
+    assert conversation.messages.filter(role='assistant').count() == 0
+
+
+def test_stream_requires_a_message(auth_client, conversation):
+    response = auth_client.post(stream_url(conversation), {})
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data['error']['code'] == 'validation_error'
+
+
+def test_stream_unknown_conversation_returns_not_found(auth_client):
+    response = auth_client.post(
+        reverse('chat_v1:conversation-messages-stream', kwargs={'conversation_id': uuid4()}),
+        {'message': 'Hi'},
     )
-    def test_unexpected_error_returns_server_error_envelope(self, mock_generate):
-        response = self.client.post(
-            f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/',
-            {'message': 'Hello'},
-        )
-        self.assertEqual(response.status_code, 500)
-        self.assertEqual(response.data['error']['code'], 'server_error')
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
-class NestedMessagesTests(APITestCase):
-    def setUp(self):
-        self.user = User.objects.create_user(
-            email='nested@example.com',
-            username='nested-user',
-            password='Str0ng-Passw0rd!42',
-        )
-        self.conversation = Conversation.objects.create(user=self.user, title='Nested chat')
-        Message.objects.create(conversation=self.conversation, role='user', content='Hi')
-        self.client.force_authenticate(user=self.user)
+def test_stream_wrong_owner_returns_not_found(auth_client, other_conversation):
+    response = auth_client.post(stream_url(other_conversation), {'message': 'Hi'})
 
-    def test_list_returns_the_conversation_messages(self):
-        response = self.client.get(f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['count'], 1)
-        self.assertEqual(response.data['results'][0]['role'], 'user')
-
-    @patch('chat.services.provider.generate', return_value='Hello back')
-    def test_post_creates_both_messages_and_returns_the_assistant_message(self, mock_generate):
-        response = self.client.post(
-            f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/',
-            {'message': 'How are you?'},
-        )
-        self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.data['role'], 'assistant')
-        self.assertEqual(response.data['content'], 'Hello back')
-        self.assertEqual(self.conversation.messages.count(), 3)
-        self.assertEqual(self.conversation.messages.filter(role='user').count(), 2)
-
-    def test_post_requires_a_message(self):
-        response = self.client.post(
-            f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/',
-            {},
-        )
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.data['error']['code'], 'validation_error')
-        self.assertEqual(response.data['error']['message'], 'Message is required')
-
-    def test_list_unknown_conversation_returns_not_found(self):
-        response = self.client.get(f'/api/v1/chat/conversations/{uuid4()}/messages/')
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.data['error']['code'], 'not_found')
-
-    def test_post_unknown_conversation_returns_not_found(self):
-        response = self.client.post(f'/api/v1/chat/conversations/{uuid4()}/messages/', {'message': 'Hi'})
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.data['error']['code'], 'not_found')
-
-    def test_put_on_conversation_detail_returns_method_not_allowed(self):
-        response = self.client.put(
-            f'/api/v1/chat/conversations/{self.conversation.uuid}/',
-            {'title': 'Renamed'},
-        )
-        self.assertEqual(response.status_code, 405)
-        self.assertEqual(response.data['error']['code'], 'method_not_allowed')
-
-    @patch(
-        'chat.services.provider.generate',
-        side_effect=LLMUnavailableError('The AI service is temporarily unavailable. Please try again later.'),
-    )
-    def test_post_provider_failure_returns_503_and_persists_only_the_user_message(self, mock_generate):
-        response = self.client.post(
-            f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/',
-            {'message': 'Hello'},
-        )
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.data['error']['code'], 'llm_unavailable')
-        self.assertEqual(self.conversation.messages.filter(role='assistant').count(), 0)
-        self.assertEqual(self.conversation.messages.count(), 2)
+    assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
-class PaginationTests(APITestCase):
-    def setUp(self):
-        self.user = User.objects.create_user(
-            email='pages@example.com',
-            username='pages-user',
-            password='Str0ng-Passw0rd!42',
-        )
-        self.client.force_authenticate(user=self.user)
+def test_stream_unauthenticated_request_returns_unauthorized(api_client, conversation):
+    response = api_client.post(stream_url(conversation), {'message': 'Hi'})
 
-    def test_page_size_above_the_cap_is_capped_at_20(self):
-        for i in range(25):
-            Conversation.objects.create(user=self.user, title=f'Chat {i}')
-        response = self.client.get('/api/v1/chat/conversations/', {'page_size': 100})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['count'], 25)
-        self.assertEqual(len(response.data['results']), 20)
-        self.assertIsNotNone(response.data['next'])
-
-    def test_empty_list_keeps_the_paginated_envelope(self):
-        response = self.client.get('/api/v1/chat/conversations/')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['count'], 0)
-        self.assertIsNone(response.data['next'])
-        self.assertIsNone(response.data['previous'])
-        self.assertEqual(response.data['results'], [])
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.data['error']['code'] == 'unauthorized'
 
 
-class StreamingTests(APITestCase):
-    def setUp(self):
-        self.user = User.objects.create_user(
-            email='stream@example.com',
-            username='stream-user',
-            password='Str0ng-Passw0rd!42',
-        )
-        self.conversation = Conversation.objects.create(user=self.user, title='Stream chat')
-        self.client.force_authenticate(user=self.user)
-
-    def _url(self):
-        return f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/stream/'
-
-    def _body(self, response):
-        return b''.join(response.streaming_content).decode()
-
-    @patch('chat.services.provider.stream', return_value=iter(['Hel', 'lo']))
-    def test_happy_path_emits_tokens_then_done_and_persists_once(self, mock_stream):
-        response = self.client.post(self._url(), {'message': 'Hi'})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['Content-Type'], 'text/event-stream')
-        body = self._body(response)
-
-        assistant = self.conversation.messages.get(role='assistant')
-        self.assertEqual(assistant.content, 'Hello')
-
-        self.assertIn('event: token\ndata: {"content": "Hel"}\n\n', body)
-        self.assertIn('event: token\ndata: {"content": "lo"}\n\n', body)
-        self.assertIn('event: done\n', body)
-        self.assertIn(f'"message_id": "{assistant.uuid}"', body)
-        self.assertIn(f'"conversation_id": "{self.conversation.uuid}"', body)
-
-        self.assertEqual(self.conversation.messages.filter(role='user').count(), 1)
-        self.assertEqual(self.conversation.messages.filter(role='assistant').count(), 1)
-
-    @patch('chat.services.provider.stream', return_value=iter(['a', 'b', 'c']))
-    def test_disconnect_mid_stream_leaves_no_assistant_row(self, mock_stream):
-        state = {}
-        generator = stream_assistant_reply(self.conversation, 'Hi', state)
-        self.assertEqual(next(generator), 'a')
-        generator.close()
-
-        self.assertEqual(self.conversation.messages.filter(role='assistant').count(), 0)
-        self.assertEqual(self.conversation.messages.filter(role='user').count(), 1)
-        self.assertNotIn('assistant_message', state)
-
-    def test_provider_error_mid_stream_emits_error_and_persists_no_assistant(self):
-        def failing_stream(message, history):
-            yield 'partial'
-            raise LLMUnavailableError('The AI service is temporarily unavailable. Please try again later.')
-
-        with patch('chat.services.provider.stream', side_effect=failing_stream):
-            response = self.client.post(self._url(), {'message': 'Hi'})
-            body = self._body(response)
-
-        self.assertIn('event: token\ndata: {"content": "partial"}\n\n', body)
-        self.assertIn('event: error\n', body)
-        self.assertIn('"code": "llm_unavailable"', body)
-        self.assertEqual(self.conversation.messages.filter(role='assistant').count(), 0)
-        self.assertEqual(self.conversation.messages.filter(role='user').count(), 1)
-
-    def test_missing_message_returns_validation_error_envelope(self):
-        response = self.client.post(self._url(), {})
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.data['error']['code'], 'validation_error')
-
-    def test_unknown_conversation_returns_not_found_envelope(self):
-        response = self.client.post(
-            f'/api/v1/chat/conversations/{uuid4()}/messages/stream/',
-            {'message': 'Hi'},
-        )
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.data['error']['code'], 'not_found')
-
-    def test_unauthenticated_request_returns_unauthorized_envelope(self):
-        self.client.force_authenticate(user=None)
-        response = self.client.post(self._url(), {'message': 'Hi'})
-        self.assertEqual(response.status_code, 401)
-        self.assertEqual(response.data['error']['code'], 'unauthorized')
+def test_scopes_use_the_configured_rates():
+    assert MessageUserThrottle().rate == '10/min'
+    assert MessageAnonThrottle().rate == '5/min'
 
 
-class ThrottleTests(APITestCase):
-    def setUp(self):
-        cache.clear()
-        self.user = User.objects.create_user(
-            email='throttle@example.com',
-            username='throttle-user',
-            password='Str0ng-Passw0rd!42',
-        )
-        self.conversation = Conversation.objects.create(user=self.user, title='Throttle chat')
-        self.client.force_authenticate(user=self.user)
+@patch('chat.services.provider.generate', return_value='ok')
+def test_sending_past_the_user_limit_returns_429_with_retry_after(mock_generate, auth_client, conversation):
+    for _ in range(10):
+        response = auth_client.post(messages_url(conversation), {'message': 'Hi'})
+        assert response.status_code == status.HTTP_201_CREATED
 
-    def _send_url(self):
-        return f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/'
+    response = auth_client.post(messages_url(conversation), {'message': 'Hi'})
 
-    def _stream_url(self):
-        return f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/stream/'
+    assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert response.data['error']['code'] == 'rate_limited'
+    assert 1 <= int(response['Retry-After']) <= 60
 
-    def test_scopes_use_the_configured_rates(self):
-        self.assertEqual(MessageUserThrottle().rate, '10/min')
-        self.assertEqual(MessageAnonThrottle().rate, '5/min')
 
-    @patch('chat.services.provider.generate', return_value='ok')
-    def test_sending_past_the_user_limit_returns_429_with_retry_after(self, mock_generate):
-        for _ in range(10):
-            response = self.client.post(self._send_url(), {'message': 'Hi'})
-            self.assertEqual(response.status_code, 201)
+@patch('chat.services.provider.generate', return_value='ok')
+def test_the_limit_is_shared_between_send_and_stream(mock_generate, auth_client, conversation):
+    for _ in range(10):
+        auth_client.post(messages_url(conversation), {'message': 'Hi'})
 
-        response = self.client.post(self._send_url(), {'message': 'Hi'})
-        self.assertEqual(response.status_code, 429)
-        self.assertEqual(response.data['error']['code'], 'rate_limited')
-        self.assertIn('Retry-After', response)
-        self.assertGreaterEqual(int(response['Retry-After']), 1)
-        self.assertLessEqual(int(response['Retry-After']), 60)
+    response = auth_client.post(stream_url(conversation), {'message': 'Hi'})
 
-    @patch('chat.services.provider.generate', return_value='ok')
-    def test_the_limit_is_shared_between_send_and_stream(self, mock_generate):
-        for _ in range(10):
-            self.client.post(self._send_url(), {'message': 'Hi'})
+    assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert response.data['error']['code'] == 'rate_limited'
 
-        response = self.client.post(self._stream_url(), {'message': 'Hi'})
-        self.assertEqual(response.status_code, 429)
-        self.assertEqual(response.data['error']['code'], 'rate_limited')
 
-    def test_listing_messages_is_not_throttled(self):
-        for _ in range(11):
-            response = self.client.get(self._send_url())
-            self.assertEqual(response.status_code, 200)
+def test_listing_messages_is_not_throttled(auth_client, conversation):
+    for _ in range(11):
+        assert auth_client.get(messages_url(conversation)).status_code == status.HTTP_200_OK
 
 
 @override_settings(DAILY_MESSAGE_CAP=2)
-class DailyQuotaTests(APITestCase):
-    def setUp(self):
-        cache.clear()
-        self.user = User.objects.create_user(
-            email='quota@example.com',
-            username='quota-user',
-            password='Str0ng-Passw0rd!42',
-        )
-        self.conversation = Conversation.objects.create(user=self.user, title='Quota chat')
-        self.client.force_authenticate(user=self.user)
+@patch('chat.services.provider.generate', return_value='ok')
+def test_exhausting_the_cap_returns_quota_exhausted(mock_generate, auth_client, conversation):
+    assert auth_client.post(messages_url(conversation), {'message': 'one'}).status_code == status.HTTP_201_CREATED
+    assert auth_client.post(messages_url(conversation), {'message': 'two'}).status_code == status.HTTP_201_CREATED
 
-    def _url(self, conversation=None):
-        conversation = conversation or self.conversation
-        return f'/api/v1/chat/conversations/{conversation.uuid}/messages/'
+    response = auth_client.post(messages_url(conversation), {'message': 'three'})
 
-    @patch('chat.services.provider.generate', return_value='ok')
-    def test_exhausting_the_cap_returns_quota_exhausted(self, mock_generate):
-        self.assertEqual(self.client.post(self._url(), {'message': 'one'}).status_code, 201)
-        self.assertEqual(self.client.post(self._url(), {'message': 'two'}).status_code, 201)
-
-        response = self.client.post(self._url(), {'message': 'three'})
-        self.assertEqual(response.status_code, 429)
-        self.assertEqual(response.data['error']['code'], 'quota_exhausted')
-        self.assertIn('quota', response.data['error']['message'].lower())
-        self.assertIn('Retry-After', response)
-        self.assertGreaterEqual(int(response['Retry-After']), 1)
-        self.assertLessEqual(int(response['Retry-After']), 86400)
-
-        self.assertEqual(DailyQuota.objects.get(date=timezone.localdate()).count, 2)
-
-    @patch('chat.services.provider.generate', return_value='ok')
-    def test_the_cap_is_shared_across_users(self, mock_generate):
-        other = User.objects.create_user(
-            email='quota-other@example.com',
-            username='quota-other',
-            password='Str0ng-Passw0rd!42',
-        )
-        other_conversation = Conversation.objects.create(user=other, title='Other chat')
-
-        self.assertEqual(self.client.post(self._url(), {'message': 'one'}).status_code, 201)
-        self.client.force_authenticate(user=other)
-        self.assertEqual(self.client.post(self._url(other_conversation), {'message': 'two'}).status_code, 201)
-
-        self.client.force_authenticate(user=self.user)
-        response = self.client.post(self._url(), {'message': 'three'})
-        self.assertEqual(response.status_code, 429)
-        self.assertEqual(response.data['error']['code'], 'quota_exhausted')
-
-    @patch('chat.services.provider.generate', return_value='ok')
-    def test_the_counter_survives_an_in_memory_restart(self, mock_generate):
-        self.client.post(self._url(), {'message': 'one'})
-        self.client.post(self._url(), {'message': 'two'})
-
-        cache.clear()
-
-        response = self.client.post(self._url(), {'message': 'three'})
-        self.assertEqual(response.status_code, 429)
-        self.assertEqual(response.data['error']['code'], 'quota_exhausted')
-        self.assertTrue(DailyQuota.objects.filter(date=timezone.localdate(), count=2).exists())
-
-    @patch('chat.services.provider.generate', return_value='ok')
-    def test_a_new_day_starts_from_zero(self, mock_generate):
-        DailyQuota.objects.create(date=timezone.localdate() - timedelta(days=1), count=2)
-
-        response = self.client.post(self._url(), {'message': 'fresh day'})
-
-        self.assertEqual(response.status_code, 201)
-        self.assertEqual(DailyQuota.objects.get(date=timezone.localdate()).count, 1)
-
-    @patch('chat.services.provider.generate', return_value='ok')
-    def test_listing_messages_does_not_consume_the_quota(self, mock_generate):
-        for _ in range(3):
-            self.assertEqual(self.client.get(self._url()).status_code, 200)
-
-        self.assertFalse(DailyQuota.objects.exists())
-
-    def test_seconds_until_midnight_is_within_a_day(self):
-        self.assertGreaterEqual(seconds_until_midnight(), 1)
-        self.assertLessEqual(seconds_until_midnight(), 86400)
+    assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert response.data['error']['code'] == 'quota_exhausted'
+    assert 'quota' in response.data['error']['message'].lower()
+    assert 1 <= int(response['Retry-After']) <= 86400
+    assert DailyQuota.objects.get(date=timezone.localdate()).count == 2
 
 
-class CircuitBreakerIntegrationTests(APITestCase):
-    def setUp(self):
-        cache.clear()
-        self.user = User.objects.create_user(
-            email='breaker@example.com',
-            username='breaker-user',
-            password='Str0ng-Passw0rd!42',
-        )
-        self.conversation = Conversation.objects.create(user=self.user, title='Breaker chat')
-        self.client.force_authenticate(user=self.user)
+@override_settings(DAILY_MESSAGE_CAP=2)
+@patch('chat.services.provider.generate', return_value='ok')
+def test_the_cap_is_shared_across_users(mock_generate, api_client, user, other_user, conversation):
+    other_conversation = ConversationFactory(user=other_user)
 
-    def _send_url(self):
-        return f'/api/v1/chat/conversations/{self.conversation.uuid}/messages/'
+    api_client.force_authenticate(user=user)
+    assert api_client.post(messages_url(conversation), {'message': 'one'}).status_code == status.HTTP_201_CREATED
 
-    def test_an_open_circuit_fails_fast_with_llm_unavailable(self):
-        class FailingCounter:
-            def __init__(self):
-                self.calls = 0
+    api_client.force_authenticate(user=other_user)
+    assert api_client.post(messages_url(other_conversation), {'message': 'two'}).status_code == status.HTTP_201_CREATED
 
-            def generate(self, message, history):
-                self.calls += 1
-                raise LLMUnavailableError('down')
+    api_client.force_authenticate(user=user)
+    response = api_client.post(messages_url(conversation), {'message': 'three'})
 
-        inner = FailingCounter()
-        breaker = CircuitBreaker(threshold=2, cooldown=60)
-        wrapped = CircuitBreakerProvider(inner, breaker)
+    assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert response.data['error']['code'] == 'quota_exhausted'
 
-        with patch('chat.services.provider', wrapped):
-            for _ in range(2):
-                response = self.client.post(self._send_url(), {'message': 'Hi'})
-                self.assertEqual(response.status_code, 503)
-                self.assertEqual(response.data['error']['code'], 'llm_unavailable')
-            self.assertEqual(inner.calls, 2)
 
-            response = self.client.post(self._send_url(), {'message': 'Hi'})
-            self.assertEqual(response.status_code, 503)
-            self.assertEqual(response.data['error']['code'], 'llm_unavailable')
-            self.assertEqual(inner.calls, 2)
+@override_settings(DAILY_MESSAGE_CAP=2)
+@patch('chat.services.provider.generate', return_value='ok')
+def test_the_counter_survives_an_in_memory_restart(mock_generate, auth_client, conversation):
+    auth_client.post(messages_url(conversation), {'message': 'one'})
+    auth_client.post(messages_url(conversation), {'message': 'two'})
+    cache.clear()
+
+    response = auth_client.post(messages_url(conversation), {'message': 'three'})
+
+    assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+    assert response.data['error']['code'] == 'quota_exhausted'
+    assert DailyQuota.objects.filter(date=timezone.localdate(), count=2).exists()
+
+
+@override_settings(DAILY_MESSAGE_CAP=2)
+@patch('chat.services.provider.generate', return_value='ok')
+def test_a_new_day_starts_from_zero(mock_generate, auth_client, conversation):
+    DailyQuota.objects.create(date=timezone.localdate() - timedelta(days=1), count=2)
+
+    response = auth_client.post(messages_url(conversation), {'message': 'fresh day'})
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert DailyQuota.objects.get(date=timezone.localdate()).count == 1
+
+
+@override_settings(DAILY_MESSAGE_CAP=2)
+def test_listing_messages_does_not_consume_the_quota(auth_client, conversation):
+    for _ in range(3):
+        assert auth_client.get(messages_url(conversation)).status_code == status.HTTP_200_OK
+
+    assert not DailyQuota.objects.exists()
+
+
+def test_seconds_until_midnight_is_within_a_day():
+    assert 1 <= seconds_until_midnight() <= 86400
+
+
+def test_an_open_circuit_fails_fast_with_llm_unavailable(auth_client, conversation):
+    class FailingCounter:
+        def __init__(self):
+            self.calls = 0
+
+        def generate(self, message, history):
+            self.calls += 1
+            raise LLMUnavailableError('down')
+
+    inner = FailingCounter()
+    breaker = CircuitBreaker(threshold=2, cooldown=60)
+    wrapped = CircuitBreakerProvider(inner, breaker)
+
+    with patch('chat.services.provider', wrapped):
+        for _ in range(2):
+            response = auth_client.post(messages_url(conversation), {'message': 'Hi'})
+            assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+            assert response.data['error']['code'] == 'llm_unavailable'
+        assert inner.calls == 2
+
+        response = auth_client.post(messages_url(conversation), {'message': 'Hi'})
+        assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+        assert response.data['error']['code'] == 'llm_unavailable'
+        assert inner.calls == 2
