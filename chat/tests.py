@@ -95,6 +95,17 @@ def test_list_is_paginated_and_lean(auth_client, conversation, message):
     assert response.data['previous'] is None
 
 
+def test_list_is_ordered_by_most_recent(auth_client, user):
+    older = ConversationFactory(user=user)
+    newer = ConversationFactory(user=user)
+    Conversation.objects.filter(pk=older.pk).update(updated_at=timezone.now() - timedelta(days=1))
+    Conversation.objects.filter(pk=newer.pk).update(updated_at=timezone.now())
+
+    response = auth_client.get(reverse('chat_v1:conversation-list'))
+
+    assert [item['uuid'] for item in response.data['results']] == [str(newer.uuid), str(older.uuid)]
+
+
 def test_list_uses_a_constant_number_of_queries(auth_client, conversation, django_assert_num_queries):
     with django_assert_num_queries(2):
         response = auth_client.get(reverse('chat_v1:conversation-list'))
