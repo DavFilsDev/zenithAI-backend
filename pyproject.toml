@@ -73,7 +73,12 @@ strict_settings = false
 DJANGO_SETTINGS_MODULE = "backend.settings.test"
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
 testpaths = ["users", "chat", "health", "backend"]
+addopts = "--cov --cov-report=term-missing"
 
 [tool.coverage.run]
 source = ["users", "chat"]
 omit = ["*/tests.py", "*/migrations/*", "*/tests/*"]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true
