@@ -80,7 +80,7 @@ Never commit `.env`. It is already ignored.
 - `production.py` sets `DEBUG = False`, carries the HTTPS/HSTS hardening, requires `SECRET_KEY`, `DB_PASSWORD` and `CORS_ALLOWED_ORIGINS`, and validates the LLM configuration at startup; `wsgi.py` and `asgi.py` use it by default.
 - `test.py` sets `DEBUG = False`, fast password hashing and an in-memory email backend.
 
-Override the module with `DJANGO_SETTINGS_MODULE`, for example `DJANGO_SETTINGS_MODULE=backend.settings.test uv run python manage.py test`.
+Override the module with `DJANGO_SETTINGS_MODULE`, for example `DJANGO_SETTINGS_MODULE=backend.settings.test uv run python manage.py check`.
 
 ## API documentation
 
@@ -136,10 +136,10 @@ uv.lock
 ## Tests
 
 ```bash
-uv run python manage.py test
+uv run pytest
 ```
 
-The suite lives in `users/tests.py`, `chat/tests.py`, `health/tests.py` and `backend/tests.py`: token payloads, refresh-token blacklisting, logout, conversation and message serialization, error envelopes, pagination and schemas. Expanding it to full coverage is task P3.6 of the improvement plan.
+The suite lives in `users/tests.py`, `chat/tests.py`, `chat/providers/tests.py`, `health/tests.py` and `backend/tests.py`: token payloads, refresh-token blacklisting, logout, conversation and message serialization, streaming, provider failures, error envelopes, pagination and schemas. Shared factories and fixtures live in `users/factories.py`, `chat/factories.py` and `conftest.py`. Coverage runs with every test invocation; `users/` and `chat/` are at 100%, and a drop below the 85% floor fails the run.
 
 ## Code quality
 
@@ -166,10 +166,10 @@ Implemented today:
 - A circuit breaker that fails fast with `503 llm_unavailable` during a provider outage and recovers after a cool-down
 - Health check, shared error envelope, Swagger UI, ReDoc and OpenAPI schema
 - All endpoints under the versioned base path `/api/v1`
+- A pytest suite with factory-boy fixtures and an enforced 85% coverage floor
 
 Planned, in the order of the roadmap:
 
-- Tooling: pytest, coverage
 - CI, containers, and deployment on free hosting with a free PostgreSQL database
 
 Full detail, with effort, acceptance criteria and dependencies:
