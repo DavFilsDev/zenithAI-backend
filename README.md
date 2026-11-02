@@ -2,6 +2,8 @@
 
 Django REST Framework backend for Zenith AI: authentication, conversations, messages, and a server-side connection to a free LLM provider.
 
+[![Tests](https://github.com/DavFilsDev/zenithAI-backend/actions/workflows/tests.yml/badge.svg?branch=main)](https://github.com/DavFilsDev/zenithAI-backend/actions/workflows/tests.yml)
+
 The product is **free and open to everyone**: no credits, no premium tier, no payment, and a target infrastructure cost of 0 €.
 
 - Frontend repository: `zenithAI_react-typescript-frontend`, served on `http://localhost:5173` in development
@@ -140,6 +142,8 @@ uv run pytest
 ```
 
 The suite lives in `users/tests.py`, `chat/tests.py`, `chat/providers/tests.py`, `health/tests.py` and `backend/tests.py`: token payloads, refresh-token blacklisting, logout, conversation and message serialization, streaming, provider failures, error envelopes, pagination and schemas. Shared factories and fixtures live in `users/factories.py`, `chat/factories.py` and `conftest.py`. Coverage runs with every test invocation; `users/` and `chat/` are at 100%, and a drop below the 85% floor fails the run.
+
+Every push and pull request runs the suite against PostgreSQL 17 in GitHub Actions (`.github/workflows/tests.yml`). To block a merge on a red run, enable branch protection for `main` and require the `Test` check.
 
 ## Code quality
 
