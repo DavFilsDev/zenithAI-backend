@@ -157,6 +157,8 @@ uv run pre-commit run --all-files
 
 `mypy` runs with the Django and DRF plugins (`django-stubs`) against `backend.settings.development`; test modules are exempt from the strict untyped-definition rule. Views, serializers, services, providers and models are annotated.
 
+Every pull request and every push to `main` also runs `ruff`, `mypy` and the OpenAPI schema validation in GitHub Actions (`.github/workflows/quality.yml`). Require both the `Test` and `Lint, types and schema` checks under `main` branch protection.
+
 ## Status & Roadmap
 
 Implemented today:
