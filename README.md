@@ -94,11 +94,13 @@ With the server running:
 
 The generated schema is the source of truth for what exists. The hand-written reference is [`docs/api/api-documentation.md`](docs/api/api-documentation.md), and the target state is [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md).
 
-To regenerate the schema into a file:
+The committed schema snapshot is [`docs/openapi.yml`](docs/openapi.yml). Regenerate it after every API change:
 
 ```bash
-uv run python manage.py spectacular --file schema.yml
+uv run python manage.py spectacular --file docs/openapi.yml
 ```
+
+The quality workflow regenerates the snapshot, fails when it differs from the committed file, and requires an update to [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md) or [`docs/api/api-documentation.md`](docs/api/api-documentation.md) whenever the schema changes.
 
 ## Endpoints available today
 
