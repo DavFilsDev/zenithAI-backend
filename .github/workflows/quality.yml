@@ -23,11 +23,46 @@ jobs:
       DJANGO_SETTINGS_MODULE: backend.settings.test
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v10.3.3
         with:
           python-version: "3.13"
           enable-cache: true
       - run: uv sync --frozen
-      - run: uv run ruff check .
-      - run: uv run mypy .
-      - run: uv run python manage.py spectacular --file /tmp/schema.yml --validate
+      - name: Lint
+        run: uv run ruff check .
+      - name: Type-check
+        run: uv run mypy .
+      - name: Validate the OpenAPI schema
+        run: |
+          uv run python manage.py spectacular --file docs/openapi.yml --validate
+          git diff --exit-code -- docs/openapi.yml
+      - name: Require documentation for schema changes
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="origin/$BASE_REF"
+          else
+            base="$BEFORE_SHA"
+          fi
+
+          if [ -z "$base" ] || [[ "$base" =~ ^0+$ ]]; then
+            echo "No base commit; skipping the documentation check."
+            exit 0
+          fi
+
+          changed=$(git diff --name-only "$base"...HEAD)
+
+          if printf '%s\n' "$changed" | grep -qx 'docs/openapi.yml' &&
+            git cat-file -e "$base:docs/openapi.yml" 2>/dev/null; then
+            if ! printf '%s\n' "$changed" | grep -Eq '^docs/(API_CONTRACT\.md|api/api-documentation\.md)$'; then
+              echo "::error::docs/openapi.yml changed without updating docs/API_CONTRACT.md or docs/api/api-documentation.md"
+              exit 1
+            fi
+          fi
