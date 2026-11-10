@@ -22,6 +22,7 @@ The product is **free and open to everyone**: no credits, no premium tier, no pa
 ## Requirements
 
 - Python 3.11+
+- [uv](https://docs.astral.sh/uv/), which installs the dependencies and the interpreter
 - PostgreSQL 15+, running locally
 - A free Google Gemini API key, only if you intend to call the chat endpoint
 
@@ -31,26 +32,22 @@ The product is **free and open to everyone**: no credits, no premium tier, no pa
 git clone https://github.com/DavFilsDev/zenithAI-backend.git
 cd zenithAI-backend
 
-python -m venv venv
-source venv/bin/activate          # macOS and Linux
-venv\Scripts\activate             # Windows
-
-pip install -r requirements.txt
+uv sync
 
 cp .env.example .env
 ```
 
-Edit `.env`, then create the database and run the migrations:
+`uv sync` creates a `.venv` and installs the exact versions pinned in `uv.lock`. Edit `.env`, then create the database and run the migrations:
 
 ```bash
-python manage.py migrate
-python manage.py runserver
+uv run python manage.py migrate
+uv run python manage.py runserver
 ```
 
 The API is then available on `http://localhost:8000`, the admin on `http://localhost:8000/admin/`. Create an admin user with:
 
 ```bash
-python manage.py createsuperuser
+uv run python manage.py createsuperuser
 ```
 
 ## Environment variables
@@ -88,7 +85,7 @@ The generated schema is the source of truth for what exists. The hand-written re
 To regenerate the schema into a file:
 
 ```bash
-python manage.py spectacular --file schema.yml
+uv run python manage.py spectacular --file schema.yml
 ```
 
 ## Endpoints available today
@@ -121,14 +118,15 @@ chat/        conversations, messages, and the provider-backed LLM service (chat/
 docs/        contract, conventions, improvement plan, API documentation
 CHANGELOG.md API and behavior changes, versioning per the contract
 manage.py
-requirements.txt
+pyproject.toml
+uv.lock
 .env.example
 ```
 
 ## Tests
 
 ```bash
-python manage.py test
+uv run python manage.py test
 ```
 
 The suite lives in `users/tests.py`, `chat/tests.py`, `health/tests.py` and `backend/tests.py`: token payloads, refresh-token blacklisting, logout, conversation and message serialization, error envelopes, pagination and schemas. Expanding it to full coverage is task P3.6 of the improvement plan.

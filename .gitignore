@@ -9,8 +9,19 @@ media/
 
 # Virtual Environment
 venv/
+.venv/
 env/
 ENV/
+
+# Tooling
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+build/
+dist/
 
 # IDE
 .vscode/
