@@ -37,7 +37,6 @@ services:
       DAILY_MESSAGE_CAP: ${DAILY_MESSAGE_CAP:-500}
       LLM_BREAKER_THRESHOLD: ${LLM_BREAKER_THRESHOLD:-5}
       LLM_BREAKER_COOLDOWN: ${LLM_BREAKER_COOLDOWN:-60}
-    command: sh -c "python manage.py migrate --noinput && exec gunicorn backend.wsgi:application --bind 0.0.0.0:8000 --workers 3 --access-logfile - --error-logfile -"
     ports:
       - "${APP_PORT:-8000}:8000"
     depends_on:
