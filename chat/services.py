@@ -1,7 +1,6 @@
 from .models import Message
-from .providers import LLMUnavailableError, Provider
+from .providers import Provider
 from .providers.factory import build_provider
-
 
 provider: Provider = build_provider()
 

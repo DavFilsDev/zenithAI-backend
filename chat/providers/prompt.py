@@ -1,4 +1,4 @@
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 from django.conf import settings
 
@@ -13,7 +13,7 @@ def estimate_tokens(text: str) -> int:
 
 def windowed_history(
     history: Sequence[ChatMessage],
-    budget: Optional[int] = None,
+    budget: int | None = None,
 ) -> Sequence[ChatMessage]:
     if budget is None:
         budget = settings.LLM_PROMPT_BUDGET

@@ -1,6 +1,7 @@
 import os
-from pathlib import Path
 from datetime import timedelta
+from pathlib import Path
+
 import dotenv
 from django.core.exceptions import ImproperlyConfigured
 
@@ -25,14 +26,14 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
+
     # Third party apps
     'rest_framework',
     'corsheaders',
     'rest_framework_simplejwt',
     'rest_framework_simplejwt.token_blacklist',
     'drf_spectacular',
-    
+
     # Local apps
     'users',
     'chat',
@@ -179,14 +180,14 @@ SPECTACULAR_SETTINGS = {
     'SERVERS': [{'url': '/api/v1'}],
     'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,
-    
+
     # Swagger UI settings
     'SWAGGER_UI_SETTINGS': {
         'deepLinking': True,
         'persistAuthorization': True,
         'displayOperationId': True,
     },
-    
+
     # API metadata
     'TAGS': [
         {'name': 'Authentication', 'description': 'User registration and login'},

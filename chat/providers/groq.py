@@ -1,6 +1,5 @@
-from typing import Iterator, Mapping, Optional, Sequence
-
 import logging
+from collections.abc import Iterator, Mapping, Sequence
 
 from django.conf import settings
 from openai import OpenAI
@@ -20,10 +19,10 @@ class GroqProvider:
 
     def __init__(
         self,
-        model: Optional[str] = None,
-        config: Optional[Mapping] = None,
-        system_prompt: Optional[str] = None,
-        api_key: Optional[str] = None,
+        model: str | None = None,
+        config: Mapping | None = None,
+        system_prompt: str | None = None,
+        api_key: str | None = None,
     ):
         self.model_name = model or settings.LLM_MODEL
         self.config = dict(config or {})
@@ -60,7 +59,7 @@ class GroqProvider:
             return response.choices[0].message.content
         except Exception as e:
             logger.error(f"Groq API error: {e}")
-            raise provider_error(e)
+            raise provider_error(e) from e
 
     def stream(self, message: str, history: Sequence[ChatMessage]) -> Iterator[str]:
         try:
@@ -77,4 +76,4 @@ class GroqProvider:
                     yield chunk.choices[0].delta.content
         except Exception as e:
             logger.error(f"Groq API error: {e}")
-            raise provider_error(e)
+            raise provider_error(e) from e

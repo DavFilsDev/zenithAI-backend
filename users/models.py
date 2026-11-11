@@ -2,6 +2,7 @@ from django.contrib.auth.models import AbstractUser, UserManager
 from django.db import models
 from django.db.models.functions import Lower
 
+
 class UserManager(UserManager):
     def get_by_natural_key(self, username):
         return self.get(**{f'{self.model.USERNAME_FIELD}__iexact': username})

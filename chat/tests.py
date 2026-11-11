@@ -1,6 +1,6 @@
 from datetime import timedelta
-from uuid import UUID, uuid4
 from unittest.mock import patch
+from uuid import UUID, uuid4
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
@@ -9,9 +9,9 @@ from django.utils import timezone
 from rest_framework.test import APITestCase
 
 from .models import Conversation, DailyQuota, Message
-from .providers import CircuitBreaker, CircuitBreakerProvider
+from .providers import CircuitBreaker, CircuitBreakerProvider, LLMUnavailableError
 from .serializers import ConversationSerializer, MessageSerializer
-from .services import LLMUnavailableError, provider, stream_assistant_reply
+from .services import provider, stream_assistant_reply
 from .throttles import MessageAnonThrottle, MessageUserThrottle, seconds_until_midnight
 
 User = get_user_model()
@@ -154,7 +154,10 @@ class ProviderFailureTests(APITestCase):
 
     @patch(
         'chat.services.provider.generate',
-        side_effect=LLMUnavailableError('The AI service is temporarily unavailable. Please try again later.', retry_after=42),
+        side_effect=LLMUnavailableError(
+            'The AI service is temporarily unavailable. Please try again later.',
+            retry_after=42,
+        ),
     )
     def test_rate_limited_provider_forwards_retry_after(self, mock_generate):
         response = self.client.post(
@@ -166,9 +169,8 @@ class ProviderFailureTests(APITestCase):
         self.assertEqual(response.headers['Retry-After'], '42')
 
     def test_generate_raises_without_an_api_key(self):
-        with override_settings(LLM_API_KEY=''):
-            with self.assertRaises(LLMUnavailableError):
-                provider.generate('Hello', [])
+        with override_settings(LLM_API_KEY=''), self.assertRaises(LLMUnavailableError):
+            provider.generate('Hello', [])
 
 
 class ErrorEnvelopeTests(APITestCase):
