@@ -56,7 +56,7 @@ uv run python manage.py createsuperuser
 
 `docker compose up --build` starts PostgreSQL and the API, applies the migrations and serves the API on `http://localhost:8000`. Set `APP_PORT` to publish a different port. The stack reads `.env` when present and otherwise uses local defaults; the database is kept in the `postgres_data` volume.
 
-The container entrypoint applies the migrations and collects the static files before it starts gunicorn. Docker marks the API healthy when `GET /api/v1/health/` succeeds; check it with `docker compose ps`.
+The container entrypoint applies the migrations and collects the static files before it starts gunicorn. Docker marks the API healthy when `GET /api/v1/health/live/` succeeds; check it with `docker compose ps`. The liveness probe does not query the database. `GET /api/v1/health/` remains the database readiness check.
 
 The compose stack uses `backend.settings.development`; the image itself defaults to `backend.settings.production`.
 
@@ -68,7 +68,9 @@ The compose stack uses `backend.settings.development`; the image itself defaults
 |---|---|
 | `SECRET_KEY` | Django signing key |
 | `ALLOWED_HOSTS` | Comma-separated host list |
-| `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | PostgreSQL connection |
+| `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | PostgreSQL connection when `DATABASE_URL` is not set |
+| `DATABASE_URL` | PostgreSQL URL; takes precedence over the `DB_*` variables, use the pooled Neon URL in production |
+| `DATABASE_URL_UNPOOLED` | Direct PostgreSQL URL used only for migrations when set |
 | `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL` | Provider selection, key and model for the chat endpoint |
 | `LLM_FALLBACK_PROVIDER`, `LLM_FALLBACK_API_KEY`, `LLM_FALLBACK_MODEL` | Second provider used automatically when the primary is rate limited |
 | `LLM_PROMPT_BUDGET` | Token budget for the history sent with each request (default 4000) |
@@ -87,7 +89,7 @@ Never commit `.env`. It is already ignored.
 
 - `base.py` holds the shared configuration and reads the environment.
 - `development.py` sets `DEBUG = True`; `manage.py` uses it by default.
-- `production.py` sets `DEBUG = False`, carries the HTTPS/HSTS hardening, requires `SECRET_KEY`, `DB_PASSWORD` and `CORS_ALLOWED_ORIGINS`, and validates the LLM configuration at startup; `wsgi.py` and `asgi.py` use it by default.
+- `production.py` sets `DEBUG = False`, carries the HTTPS/HSTS hardening, serves static files through WhiteNoise, requires `SECRET_KEY`, a database password and `CORS_ALLOWED_ORIGINS`, and validates the LLM configuration at startup; `wsgi.py` and `asgi.py` use it by default.
 - `test.py` sets `DEBUG = False`, fast password hashing and an in-memory email backend.
 
 Override the module with `DJANGO_SETTINGS_MODULE`, for example `DJANGO_SETTINGS_MODULE=backend.settings.test uv run python manage.py check`.
@@ -124,6 +126,7 @@ The quality workflow regenerates the snapshot, fails when it differs from the co
 | GET, POST | `/api/v1/chat/conversations/{uuid}/messages/` | Yes |
 | POST | `/api/v1/chat/conversations/{uuid}/messages/stream/` (SSE) | Yes |
 | GET | `/api/v1/health/` | No |
+| GET | `/api/v1/health/live/` | No |
 | GET | `/api/v1/schema/`, `/api/v1/docs/`, `/api/v1/redoc/` | No |
 | GET | `/admin/` | Staff |
 
