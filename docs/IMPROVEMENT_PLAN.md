@@ -244,15 +244,39 @@ Effort: **S** under half a day, **M** one to three days, **L** more than three d
 
 ### P5 — Free deployment and free observability
 
-- [ ] **P5.1** Deploy the backend on Render Free. — *M* — the service is reachable on HTTPS, `/api/v1/health/live/` is the Render health check, the service stays on the Free plan, and no card is added. — Depends on: P4.4, P0.15.
-- [ ] **P5.2** Attach a Neon free PostgreSQL database. — *M* — the Frankfurt project uses the pooled URL at runtime and the direct URL for migrations, and the 100 compute-hour plan is not exceeded. — Depends on: P1.1, P3.8.
-- [ ] **P5.3** Generate and store the production configuration. — *S* — a strong `SECRET_KEY` is generated, `DEBUG=False`, `ALLOWED_HOSTS` lists the deployed host only, and no secret is committed. — Depends on: P0.10, P0.11.
-- [ ] **P5.4** Automate the release. — *M* — a push to `main` deploys only after CI passes, the container migrates and restarts, and a failed migration leaves the previous version serving. — Depends on: P5.1, P5.2.
-- [ ] **P5.5** Configure free error monitoring. — *S* — provider and server errors are reported to a free tier service, with the environment and the route attached, and personal data excluded. — Depends on: P5.1.
-- [ ] **P5.6** Configure an uptime check. — *S* — UptimeRobot polls `/api/v1/health/live/` every 5 minutes, the readiness endpoint is never monitored, and an alert fires on failure. — Depends on: P1.5.
-- [ ] **P5.7** Add structured logging with a request identifier. — *S* — each request logs one line with an id, the user id when authenticated, the route and the duration, and the format is machine-readable. — Depends on: P5.5.
-- [ ] **P5.8** Expose quota and limit counters in the admin. — *M* — the global daily counter, the per-user usage and the provider 429 ratio are visible without a database query, so a quota overrun is noticed before users complain. — Depends on: P2.9.
-- [ ] **P5.9** Write the deployment runbook. — *M* — the README documents the exact Render, Neon, UptimeRobot and environment-variable steps, with no step that requires a paid resource. — Depends on: P5.1, P5.2.
+- [x] **P5.1** Deploy the backend on Render Free. — *M* — the service is reachable on HTTPS, `/api/v1/health/live/` is the Render health check, the service stays on the Free plan, and no card is added. — Depends on: P4.4, P0.15. (Live at `https://zenith-ai-backend-t45i.onrender.com`; Render health checks and the liveness endpoint return `200`.)
+- [x] **P5.2** Attach a Neon free PostgreSQL database. — *M* — the Frankfurt project uses the pooled URL at runtime and the direct URL for migrations, and the 100 compute-hour plan is not exceeded. — Depends on: P1.1, P3.8. (`/api/v1/health/` returns `200`; confirm `DATABASE_URL_UNPOOLED` is the Neon direct URL and monitor the 100-hour allowance. The uptime monitor must not poll readiness.)
+- [x] **P5.3** Generate and store the production configuration. — *S* — a strong `SECRET_KEY` is generated, `DEBUG=False`, `ALLOWED_HOSTS` lists the deployed host only, and no secret is committed. — Depends on: P0.10, P0.11. (No wildcard; production appends the runtime `RENDER_EXTERNAL_HOSTNAME`, which covers Render's suffixed hostname.)
+- [x] **P5.4** Automate the release. — *M* — a push to `main` deploys only after CI passes, the container migrates and restarts, and a failed migration leaves the previous version serving. — Depends on: P5.1, P5.2. (`autoDeployTrigger: checksPass` is configured and commit `28d6812` deployed successfully. The failed-migration rollback path has not been deliberately tested.)
+- [ ] **P5.5** Configure free error monitoring. — *S* — provider and server errors are reported to a free tier service, with the environment and the route attached, and personal data excluded. — Depends on: P5.1. **Remaining.**
+- [ ] **P5.6** Configure an uptime check. — *S* — UptimeRobot polls `/api/v1/health/live/` every 5 minutes, the readiness endpoint is never monitored, and an alert fires on failure. — Depends on: P1.5. **Remaining**; use `https://zenith-ai-backend-t45i.onrender.com/api/v1/health/live/`.
+- [ ] **P5.7** Add structured logging with a request identifier. — *S* — each request logs one line with an id, the user id when authenticated, the route and the duration, and the format is machine-readable. — Depends on: P5.5. **Remaining.**
+- [ ] **P5.8** Expose quota and limit counters in the admin. — *M* — the global daily counter, the per-user usage and the provider 429 ratio are visible without a database query, so a quota overrun is noticed before users complain. — Depends on: P2.9. **Remaining.**
+- [x] **P5.9** Write the deployment runbook. — *M* — the README documents the exact Render, Neon, UptimeRobot and environment-variable steps, with no step that requires a paid resource. — Depends on: P5.1, P5.2. (README includes the verified deployment state, runtime hostname handling, frontend handoff and UptimeRobot steps.)
+
+#### Current deployment state
+
+Verified on **2026-11-11**:
+
+| Item | State |
+|---|---|
+| Backend | Live on Render Free at `https://zenith-ai-backend-t45i.onrender.com` |
+| Database | Neon Free reachable; `/api/v1/health/` returns `200` |
+| Frontend | Not deployed yet; use `VITE_API_URL=https://zenith-ai-backend-t45i.onrender.com/api/v1` |
+| CORS | Waiting for the exact frontend origin |
+| UptimeRobot | Pending |
+| Error monitoring | Pending |
+| Structured logging | Pending |
+| Quota admin counters | Pending |
+
+#### Frontend handoff
+
+The frontend repository is still local-only. After it is deployed:
+
+1. Build it with `VITE_API_URL=https://zenith-ai-backend-t45i.onrender.com/api/v1`.
+2. Add the exact frontend origin to `CORS_ALLOWED_ORIGINS` in Render, with no trailing slash and no wildcard.
+3. Restart or redeploy the backend so the new value is loaded.
+4. Smoke-test register, login, conversation creation and one message.
 
 ## 4. Free LLM providers
 
@@ -274,9 +298,9 @@ Verified on **2026-11-11**. Same caveat: re-check before deploying.
 
 | Platform | Free offer | Known limits | Verdict |
 |---|---|---|---|
-| **Render** | One Free web service with 0.1 CPU, 512 MB RAM, 750 instance hours and 5 GB outbound bandwidth per month; free TLS, custom domains, health checks and Frankfurt. | Spins down after 15 minutes without traffic and takes about a minute to wake. Instances may restart at any time. The free PostgreSQL **expires 30 days after creation**, so it cannot be used. Free instances are not intended for production. | **Recommended backend**, kept warm by a 5-minute liveness monitor |
+| **Render** | One Free web service with 0.1 CPU, 512 MB RAM, 750 instance hours and 5 GB outbound bandwidth per month; free TLS, custom domains, health checks and Frankfurt. | Spins down after 15 minutes without traffic and takes about a minute to wake. Instances may restart at any time. The free PostgreSQL **expires 30 days after creation**, so it cannot be used. Free instances are not intended for production. | **Deployed backend**, kept warm by a 5-minute liveness monitor |
 | **Koyeb** | No usable free web service at the time of verification. | The dashboard only shows the Mistral relaunch state and provides no way to create a service; a second account behaves the same. The service is therefore unavailable regardless of the published plan. | **Excluded** |
-| **Neon** | 100 projects, 100 compute hours per project per month, 0.5 GB storage per project, 5 GB public transfer per month. | Compute scales to zero after 5 minutes, waking in a few hundred milliseconds, and that cannot be disabled. When the compute hours or the transfer run out, the compute is suspended until the next period. No overage is ever billed. | **Recommended database**, use the pooled connection string |
+| **Neon** | 100 projects, 100 compute hours per project per month, 0.5 GB storage per project, 5 GB public transfer per month. | Compute scales to zero after 5 minutes, waking in a few hundred milliseconds, and that cannot be disabled. When the compute hours or the transfer run out, the compute is suspended until the next period. No overage is ever billed. | **Deployed database**, use the pooled connection string |
 | **Northflank** | Sandbox with 2 services, 2 jobs, 1 database and up to 20 $ of monthly resource usage on Northflank Cloud; always on, no sleeping, Dockerfile builds, Frankfurt. | A payment method is required to create resources, even on the free plan, and the tier is not intended for production. The card requirement violates the zero-cost rule. | **Excluded** |
 | **Supabase** | 500 MB database, 1 GB file storage, 5 GB bandwidth, two free projects. | A free project is paused after 7 days of low activity, with a 1-year restore window. | Fallback database |
 | **Google Cloud Run** | Request-based free tier, about 180 000 vCPU-seconds, 360 000 GiB-seconds and 2 million requests per month. | Requires a Google Cloud billing account and additional Cloud Build, Artifact Registry and networking setup; scales to zero with cold starts. | Excluded by the zero-cost rule |
