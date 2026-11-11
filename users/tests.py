@@ -1,192 +1,210 @@
-from django.contrib.auth import get_user_model
+import pytest
 from django.db import IntegrityError
 from django.urls import reverse
 from rest_framework import status
-from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
-User = get_user_model()
+from .factories import DEFAULT_PASSWORD, UserFactory
+from .models import User
+from .serializers import RegisterSerializer
+
+pytestmark = pytest.mark.django_db
 
 
-class UserPayloadTests(APITestCase):
-    def setUp(self):
-        self.password = 'Str0ng-Passw0rd!42'
-        self.user = User.objects.create_user(
-            email='tester@example.com',
-            username='tester',
-            password=self.password,
-        )
-
-    def test_token_response_has_no_billing_state(self):
-        response = self.client.post(
-            reverse('token_obtain_pair'),
-            {'email': self.user.email, 'password': self.password},
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertNotIn('credits', response.data)
-        self.assertNotIn('is_premium', response.data)
-        self.assertIn('username', response.data)
-
-    def test_profile_response_contains_only_user_fields(self):
-        self.client.force_authenticate(self.user)
-        response = self.client.get(reverse('profile'))
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertNotIn('credits', response.data)
-        self.assertNotIn('is_premium', response.data)
-        self.assertNotIn('theme', response.data)
-        self.assertNotIn('language', response.data)
-        self.assertIn('email', response.data)
-
-    def test_api_key_never_appears_in_responses(self):
-        self.client.force_authenticate(self.user)
-        profile = self.client.get(reverse('profile'))
-        self.assertEqual(profile.status_code, status.HTTP_200_OK)
-        self.assertNotIn('api_key', profile.data)
-
-        token = self.client.post(
-            reverse('token_obtain_pair'),
-            {'email': self.user.email, 'password': self.password},
-        )
-        self.assertEqual(token.status_code, status.HTTP_200_OK)
-        self.assertNotIn('api_key', token.data)
+def obtain_tokens(client, email: str, password: str = DEFAULT_PASSWORD):
+    return client.post(reverse('token_obtain_pair'), {'email': email, 'password': password})
 
 
-class TokenSecurityTests(APITestCase):
-    def setUp(self):
-        self.password = 'Str0ng-Passw0rd!42'
-        self.user = User.objects.create_user(
-            email='tokens@example.com',
-            username='tokens',
-            password=self.password,
-        )
-        self.refresh = self.client.post(
-            reverse('token_obtain_pair'),
-            {'email': self.user.email, 'password': self.password},
-        ).data['refresh']
-
-    def test_access_token_expires_in_15_minutes(self):
-        access = self.client.post(
-            reverse('token_obtain_pair'),
-            {'email': self.user.email, 'password': self.password},
-        ).data['access']
-        token = AccessToken(access)
-        self.assertEqual(token.payload['exp'] - token.payload['iat'], 15 * 60)
-
-    def test_rotated_refresh_token_is_blacklisted(self):
-        first = self.client.post(reverse('token_refresh'), {'refresh': self.refresh})
-        self.assertEqual(first.status_code, status.HTTP_200_OK)
-        self.assertIn('refresh', first.data)
-        self.assertNotEqual(first.data['refresh'], self.refresh)
-
-        second = self.client.post(reverse('token_refresh'), {'refresh': self.refresh})
-        self.assertEqual(second.status_code, status.HTTP_401_UNAUTHORIZED)
-
-    def test_blacklisted_token_is_rejected(self):
-        RefreshToken(self.refresh).blacklist()
-        response = self.client.post(reverse('token_refresh'), {'refresh': self.refresh})
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-
-    def test_logout_blacklists_the_refresh_token(self):
-        response = self.client.post(reverse('logout'), {'refresh': self.refresh})
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-
-        refresh = self.client.post(reverse('token_refresh'), {'refresh': self.refresh})
-        self.assertEqual(refresh.status_code, status.HTTP_401_UNAUTHORIZED)
-
-    def test_logout_on_the_contract_path_blacklists_the_token(self):
-        response = self.client.post('/api/v1/auth/logout/', {'refresh': self.refresh})
-        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-
-        refresh = self.client.post('/api/v1/auth/token/refresh/', {'refresh': self.refresh})
-        self.assertEqual(refresh.status_code, status.HTTP_401_UNAUTHORIZED)
-
-    def test_logout_rejects_a_missing_refresh_token(self):
-        response = self.client.post(reverse('logout'), {})
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+def refresh_token_for(client, user: User) -> str:
+    response = obtain_tokens(client, user.email)
+    assert response.status_code == status.HTTP_200_OK
+    return response.data['refresh']
 
 
-class EmailNormalizationTests(APITestCase):
-    def test_registration_lowercases_the_email(self):
-        response = self.client.post(reverse('register'), {
-            'email': 'MixedCase@Example.COM',
-            'username': 'mixed-case',
-            'password': 'Str0ng-Passw0rd!42',
-            'password2': 'Str0ng-Passw0rd!42',
-        })
-        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(User.objects.get(username='mixed-case').email, 'mixedcase@example.com')
+def test_token_response_has_no_billing_state(api_client, user):
+    response = obtain_tokens(api_client, user.email)
 
-    def test_registration_rejects_case_insensitive_duplicate(self):
-        User.objects.create_user(
-            email='duplicate@example.com',
-            username='duplicate',
-            password='Str0ng-Passw0rd!42',
-        )
-        response = self.client.post(reverse('register'), {
-            'email': 'DUPLICATE@Example.com',
-            'username': 'dup-two',
-            'password': 'Str0ng-Passw0rd!42',
-            'password2': 'Str0ng-Passw0rd!42',
-        })
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data['error']['code'], 'validation_error')
-        self.assertIn('email', response.data['error']['details'])
-
-    def test_login_accepts_uppercase_email(self):
-        self.password = 'Str0ng-Passw0rd!42'
-        User.objects.create_user(
-            email='login@example.com',
-            username='login-user',
-            password=self.password,
-        )
-        response = self.client.post(
-            reverse('token_obtain_pair'),
-            {'email': 'LOGIN@Example.COM', 'password': self.password},
-        )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-    def test_database_rejects_case_insensitive_duplicate(self):
-        User.objects.create_user(
-            email='db-case@example.com',
-            username='db-case',
-            password='Str0ng-Passw0rd!42',
-        )
-        with self.assertRaises(IntegrityError):
-            User.objects.create_user(
-                email='DB-CASE@Example.com',
-                username='db-case-two',
-                password='Str0ng-Passw0rd!42',
-            )
+    assert response.status_code == status.HTTP_200_OK
+    assert 'credits' not in response.data
+    assert 'is_premium' not in response.data
+    assert 'username' in response.data
 
 
-class ErrorEnvelopeTests(APITestCase):
-    def setUp(self):
-        self.password = 'Str0ng-Passw0rd!42'
-        self.user = User.objects.create_user(
-            email='errors@example.com',
-            username='errors',
-            password=self.password,
-        )
+def test_profile_response_contains_only_user_fields(auth_client):
+    response = auth_client.get(reverse('profile'))
 
-    def test_unauthenticated_request_returns_unauthorized_envelope(self):
-        response = self.client.get(reverse('profile'))
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
-        self.assertEqual(response.data['error']['code'], 'unauthorized')
-        self.assertIn('message', response.data['error'])
-        self.assertEqual(response.data['error']['details'], {})
+    assert response.status_code == status.HTTP_200_OK
+    assert 'credits' not in response.data
+    assert 'is_premium' not in response.data
+    assert 'theme' not in response.data
+    assert 'language' not in response.data
+    assert 'email' in response.data
 
-    def test_registration_returns_field_map_in_details(self):
-        response = self.client.post(reverse('register'), {
-            'username': 'noemail',
-            'password': self.password,
-            'password2': self.password,
-        })
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertEqual(response.data['error']['code'], 'validation_error')
-        self.assertIn('email', response.data['error']['details'])
 
-    def test_put_profile_returns_method_not_allowed(self):
-        self.client.force_authenticate(self.user)
-        response = self.client.put(reverse('profile'), {'username': 'renamed'})
-        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
-        self.assertEqual(response.data['error']['code'], 'method_not_allowed')
+def test_api_key_never_appears_in_responses(api_client, auth_client, user):
+    profile = auth_client.get(reverse('profile'))
+    token = obtain_tokens(api_client, user.email)
+
+    assert profile.status_code == status.HTTP_200_OK
+    assert token.status_code == status.HTTP_200_OK
+    assert 'api_key' not in profile.data
+    assert 'api_key' not in token.data
+
+
+def test_access_token_expires_in_15_minutes(api_client, user):
+    response = obtain_tokens(api_client, user.email)
+    token = AccessToken(response.data['access'])
+
+    assert token.payload['exp'] - token.payload['iat'] == 15 * 60
+
+
+def test_rotated_refresh_token_is_blacklisted(api_client, user):
+    refresh = refresh_token_for(api_client, user)
+
+    first = api_client.post(reverse('token_refresh'), {'refresh': refresh})
+    second = api_client.post(reverse('token_refresh'), {'refresh': refresh})
+
+    assert first.status_code == status.HTTP_200_OK
+    assert first.data['refresh'] != refresh
+    assert second.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+def test_blacklisted_token_is_rejected(api_client, user):
+    refresh = refresh_token_for(api_client, user)
+    RefreshToken(refresh).blacklist()
+
+    response = api_client.post(reverse('token_refresh'), {'refresh': refresh})
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+def test_logout_blacklists_the_refresh_token(api_client, user):
+    refresh = refresh_token_for(api_client, user)
+
+    response = api_client.post(reverse('logout'), {'refresh': refresh})
+    rejected = api_client.post(reverse('token_refresh'), {'refresh': refresh})
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+    assert rejected.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+def test_logout_rejects_a_missing_refresh_token(api_client):
+    response = api_client.post(reverse('logout'), {})
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+def test_logout_rejects_a_malformed_refresh_token(api_client):
+    response = api_client.post(reverse('logout'), {'refresh': 'not-a-token'})
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.data['error']['code'] == 'unauthorized'
+
+
+def test_registration_lowercases_the_email(api_client):
+    response = api_client.post(reverse('register'), {
+        'email': 'MixedCase@Example.COM',
+        'username': 'mixed-case',
+        'password': DEFAULT_PASSWORD,
+        'password2': DEFAULT_PASSWORD,
+    })
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert User.objects.get(username='mixed-case').email == 'mixedcase@example.com'
+
+
+def test_registration_rejects_case_insensitive_duplicate(api_client, user):
+    response = api_client.post(reverse('register'), {
+        'email': user.email.upper(),
+        'username': 'duplicate',
+        'password': DEFAULT_PASSWORD,
+        'password2': DEFAULT_PASSWORD,
+    })
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data['error']['code'] == 'validation_error'
+    assert 'email' in response.data['error']['details']
+
+
+def test_registration_rejects_mismatched_passwords(api_client):
+    response = api_client.post(reverse('register'), {
+        'email': 'mismatch@example.com',
+        'username': 'mismatch',
+        'password': DEFAULT_PASSWORD,
+        'password2': f'{DEFAULT_PASSWORD}x',
+    })
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data['error']['code'] == 'validation_error'
+    assert 'password' in response.data['error']['details']
+
+
+def test_registration_serializer_ignores_the_current_user_email(user):
+    serializer = RegisterSerializer(instance=user, data={
+        'email': user.email.upper(),
+        'username': user.username,
+        'password': DEFAULT_PASSWORD,
+        'password2': DEFAULT_PASSWORD,
+    })
+
+    assert serializer.is_valid(), serializer.errors
+
+
+def test_login_accepts_uppercase_email(api_client, user):
+    response = obtain_tokens(api_client, user.email.upper())
+
+    assert response.status_code == status.HTTP_200_OK
+
+
+def test_login_rejects_invalid_credentials(api_client, user):
+    response = obtain_tokens(api_client, user.email, 'wrong-password')
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.data['error']['code'] == 'unauthorized'
+
+
+def test_database_rejects_case_insensitive_duplicate():
+    UserFactory(email='db-case@example.com')
+
+    with pytest.raises(IntegrityError):
+        UserFactory(email='DB-CASE@Example.com')
+
+
+def test_user_string_is_the_email(user):
+    assert str(user) == user.email
+
+
+def test_unauthenticated_profile_request_returns_unauthorized_envelope(api_client):
+    response = api_client.get(reverse('profile'))
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.data['error']['code'] == 'unauthorized'
+    assert 'message' in response.data['error']
+    assert response.data['error']['details'] == {}
+
+
+def test_registration_returns_field_map_in_details(api_client):
+    response = api_client.post(reverse('register'), {
+        'username': 'noemail',
+        'password': DEFAULT_PASSWORD,
+        'password2': DEFAULT_PASSWORD,
+    })
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.data['error']['code'] == 'validation_error'
+    assert 'email' in response.data['error']['details']
+
+
+def test_profile_patch_updates_the_username(auth_client, user):
+    response = auth_client.patch(reverse('profile'), {'username': 'renamed'})
+
+    assert response.status_code == status.HTTP_200_OK
+    user.refresh_from_db()
+    assert user.username == 'renamed'
+
+
+def test_put_profile_returns_method_not_allowed(auth_client):
+    response = auth_client.put(reverse('profile'), {'username': 'renamed'})
+
+    assert response.status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+    assert response.data['error']['code'] == 'method_not_allowed'

@@ -1,18 +1,23 @@
 from unittest.mock import patch
 
-from django.test import TestCase
+import pytest
+from django.urls import reverse
+
+pytestmark = pytest.mark.django_db
 
 
-class HealthEndpointTests(TestCase):
-    def test_health_returns_200_without_authentication(self):
-        response = self.client.get('/api/v1/health/')
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data['status'], 'ok')
-        self.assertEqual(response.data['database'], 'ok')
+def test_health_returns_200_without_authentication(api_client):
+    response = api_client.get(reverse('health'))
 
-    @patch('health.views.connection.cursor', side_effect=Exception('db down'))
-    def test_health_returns_503_when_database_is_unreachable(self, mock_cursor):
-        response = self.client.get('/api/v1/health/')
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.data['status'], 'error')
-        self.assertEqual(response.data['database'], 'unavailable')
+    assert response.status_code == 200
+    assert response.data['status'] == 'ok'
+    assert response.data['database'] == 'ok'
+
+
+@patch('health.views.connection.cursor', side_effect=Exception('db down'))
+def test_health_returns_503_when_database_is_unreachable(mock_cursor, api_client):
+    response = api_client.get(reverse('health'))
+
+    assert response.status_code == 503
+    assert response.data['status'] == 'error'
+    assert response.data['database'] == 'unavailable'

@@ -8,7 +8,11 @@ from .models import Conversation, Message
 
 
 def conversations_for(user: User) -> QuerySet[Conversation]:
-    return Conversation.objects.filter(user=user).annotate(message_count=Count('messages'))
+    return (
+        Conversation.objects.filter(user=user)
+        .annotate(message_count=Count('messages'))
+        .order_by('-updated_at')
+    )
 
 
 def conversation_for(user: User, conversation_uuid: UUID) -> Conversation | None:

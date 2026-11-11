@@ -130,6 +130,48 @@ class GroqProviderTests(SimpleTestCase):
             self.assertIsNotNone(provider._client())
         mock_openai.assert_called_once_with(api_key='', base_url=GROQ_BASE_URL)
 
+    @patch('chat.providers.groq.OpenAI')
+    def test_stream_failure_raises_llm_unavailable(self, mock_openai):
+        completions = FakeCompletions(None)
+
+        def boom(**kwargs):
+            raise RuntimeError('down')
+
+        completions.create = boom
+        mock_openai.return_value = FakeClient(completions)
+
+        provider = GroqProvider(api_key='test-key')
+        with self.assertRaises(LLMUnavailableError):
+            list(provider.stream('hi', []))
+
+
+class GeminiProviderTests(SimpleTestCase):
+    @patch('chat.providers.gemini.genai.Client')
+    def test_stream_yields_only_non_empty_chunk_text(self, mock_client):
+        chunks = [
+            SimpleNamespace(text='frag'),
+            SimpleNamespace(text=None),
+            SimpleNamespace(text='ment'),
+        ]
+        mock_client.return_value.models.generate_content_stream.return_value = chunks
+
+        provider = GeminiProvider(api_key='x')
+
+        history = [{'role': 'user', 'content': 'earlier'}]
+        self.assertEqual(''.join(provider.stream('hi', history)), 'fragment')
+        contents = mock_client.return_value.models.generate_content_stream.call_args.kwargs['contents']
+        self.assertIn('User: earlier', contents)
+        self.assertIn('User: hi', contents)
+
+    @patch('chat.providers.gemini.genai.Client')
+    def test_stream_failure_raises_llm_unavailable(self, mock_client):
+        mock_client.return_value.models.generate_content_stream.side_effect = RuntimeError('down')
+
+        provider = GeminiProvider(api_key='x')
+
+        with self.assertRaises(LLMUnavailableError):
+            list(provider.stream('hi', []))
+
 
 class FailingProvider:
     def generate(self, message, history):
@@ -176,6 +218,15 @@ class FactoryTests(SimpleTestCase):
             LLM_FALLBACK_PROVIDER='groq',
             LLM_FALLBACK_API_KEY='',
         ), self.assertRaisesMessage(ImproperlyConfigured, 'LLM_FALLBACK_API_KEY'):
+            validate_config()
+
+    def test_validate_config_rejects_an_unknown_fallback_provider(self):
+        with override_settings(
+            LLM_PROVIDER='gemini',
+            LLM_API_KEY='x',
+            LLM_FALLBACK_PROVIDER='claude',
+            LLM_FALLBACK_API_KEY='y',
+        ), self.assertRaisesMessage(ImproperlyConfigured, 'claude'):
             validate_config()
 
     def test_validate_config_accepts_a_complete_configuration(self):
@@ -446,6 +497,17 @@ class ProviderErrorMappingTests(SimpleTestCase):
         mapped = provider_error(RuntimeError('raw'))
         self.assertIsNone(mapped.retry_after)
         self.assertEqual(str(mapped), SAFE_PROVIDER_MESSAGE)
+
+    def test_error_without_headers_has_no_retry_after(self):
+        exc = SimpleNamespace(status_code=429, response=SimpleNamespace(headers=None))
+        self.assertIsNone(provider_error(exc).retry_after)
+
+    def test_invalid_retry_after_value_has_no_retry_after(self):
+        exc = SimpleNamespace(
+            status_code=429,
+            response=SimpleNamespace(headers={'Retry-After': 'not-a-number'}),
+        )
+        self.assertIsNone(provider_error(exc).retry_after)
 
     @patch('chat.providers.gemini.genai.Client')
     def test_gemini_provider_propagates_retry_after(self, mock_client):
