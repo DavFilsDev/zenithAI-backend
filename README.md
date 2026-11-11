@@ -172,6 +172,62 @@ uv run pre-commit run --all-files
 
 Every pull request and every push to `main` also runs `ruff`, `mypy` and the OpenAPI schema validation in GitHub Actions (`.github/workflows/quality.yml`). Require both the `Test` and `Lint, types and schema` checks under `main` branch protection.
 
+## Deployment (Render Free + Neon Free)
+
+The backend is configured to deploy from [`render.yaml`](render.yaml) to Render's Free web service plan, with PostgreSQL on Neon Free. The target combination costs 0 € and uses no payment method. Free tiers change without notice: re-check the limits before deploying.
+
+### 1. Create the Neon database
+
+1. Create a Neon project in AWS Frankfurt (`eu-central-1`) with PostgreSQL 17.
+2. Copy the **pooled** connection string (the host contains `-pooler`) into `DATABASE_URL`.
+3. Copy the **direct** connection string into `DATABASE_URL_UNPOOLED`. Migrations use it; the running app uses the pooled URL.
+4. Do not use Render Postgres: its free database expires 30 days after creation.
+
+Neon Free includes 100 compute hours per project per month. The liveness endpoint does not query the database, so Render health checks and the uptime monitor do not keep Neon awake.
+
+### 2. Deploy on Render
+
+1. In Render, choose **New → Blueprint**, connect this repository, and select the `main` branch.
+2. Apply [`render.yaml`](render.yaml). It creates one Free web service in Frankfurt with:
+   - Docker build from `./Dockerfile`
+   - health check path `/api/v1/health/live/`
+   - `autoDeployTrigger: checksPass`, so a red CI run does not deploy
+   - `ALLOWED_HOSTS` set from Render's `RENDER_EXTERNAL_HOSTNAME`
+   - a generated `SECRET_KEY`
+3. Fill the prompted secrets:
+   - `DATABASE_URL` — Neon pooled URL
+   - `DATABASE_URL_UNPOOLED` — Neon direct URL
+   - `LLM_API_KEY` — Gemini API key
+   - `CORS_ALLOWED_ORIGINS` — comma-separated frontend origins, without a trailing slash
+4. Keep the service on the **Free** plan and do not add a payment method. Render does not require one for Free web services; stop if the dashboard asks for a card.
+5. If the service name `zenith-ai-backend` is unavailable, change the Blueprint `name` and the self-reference under `ALLOWED_HOSTS` together.
+6. If you add a custom domain, replace the Blueprint `ALLOWED_HOSTS` self-reference with a literal comma-separated list containing both the `onrender.com` host and the custom domain.
+
+The entrypoint applies migrations and collects static files before gunicorn starts. Render's zero-downtime deploy keeps the previous instance serving until the new one passes its health check, so a failed migration does not replace a working deployment.
+
+### 3. Keep the service warm
+
+Render suspends a Free web service after 15 minutes without traffic. A Free UptimeRobot monitor every 5 minutes keeps it warm:
+
+- Monitor only `https://<service>.onrender.com/api/v1/health/live/`.
+- Use an HTTP(s) check with a 5-minute interval and at least one alert contact.
+- Never monitor `/api/v1/health/`: it queries Neon and defeats database scale-to-zero.
+- A warm service consumes about 744 instance hours per month, below the 750-hour Free allowance. Neon still sleeps when no API request needs it.
+
+Free instances can restart at any time, are limited to 0.1 CPU / 512 MB, and include 5 GB of outbound bandwidth and 500 build-pipeline minutes per month. Render may also suspend a Free service that initiates an unusually high volume of outbound traffic, including database and provider calls. If you exceed bandwidth or pipeline minutes without a payment method, Render suspends Free services or new builds until the next month instead of billing you. This is intentional under the zero-cost rule.
+
+### 4. Verify the deployment
+
+```bash
+curl -i https://<service>.onrender.com/api/v1/health/live/
+curl -i https://<service>.onrender.com/api/v1/health/
+curl -I https://<service>.onrender.com/api/v1/docs/
+```
+
+The first endpoint must return `200` without touching Neon. The second may take longer on the first request because it wakes Neon. The third confirms static files and WhiteNoise are working.
+
+Rollback is a Render dashboard action: redeploy a previous successful build. Do not add a paid plan, a persistent disk, or a card to work around a free-tier limit.
+
 ## Status & Roadmap
 
 Implemented today:
