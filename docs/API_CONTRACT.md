@@ -44,6 +44,7 @@ Status legend: **Implemented** = available today, **Planned** = described by thi
 | POST | `/conversations/{uuid}/messages/` | Yes | Implemented | `POST /api/v1/chat/conversations/{uuid}/messages/` |
 | POST | `/conversations/{uuid}/messages/stream/` | Yes | Implemented | `POST /api/v1/chat/conversations/{uuid}/messages/stream/` (SSE) |
 | GET | `/health/` | No | Implemented | `GET /api/v1/health/` |
+| GET | `/health/live/` | No | Implemented | `GET /api/v1/health/live/` |
 
 ### 3.1 Method set
 

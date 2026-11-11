@@ -14,6 +14,15 @@ def test_health_returns_200_without_authentication(api_client):
     assert response.data['database'] == 'ok'
 
 
+@patch('health.views.connection.cursor', side_effect=AssertionError('liveness must not query the database'))
+def test_liveness_returns_200_without_touching_the_database(mock_cursor, api_client):
+    response = api_client.get(reverse('health-live'))
+
+    assert response.status_code == 200
+    assert response.data == {'status': 'ok'}
+    mock_cursor.assert_not_called()
+
+
 @patch('health.views.connection.cursor', side_effect=Exception('db down'))
 def test_health_returns_503_when_database_is_unreachable(mock_cursor, api_client):
     response = api_client.get(reverse('health'))

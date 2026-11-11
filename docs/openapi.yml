@@ -559,6 +559,24 @@ paths:
               schema:
                 $ref: '#/components/schemas/Health'
           description: The database is unreachable
+  /api/v1/health/live/:
+    get:
+      operationId: health_live_retrieve
+      description: Public liveness probe that only confirms the process is serving
+        requests. It does not query the database, so platform health checks do not
+        wake a suspended database.
+      summary: Liveness check
+      tags:
+      - System
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Liveness'
+          description: The service is running
 components:
   schemas:
     Conversation:
@@ -641,6 +659,13 @@ components:
           type: string
       required:
       - database
+      - status
+    Liveness:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
       - status
     Message:
       type: object
