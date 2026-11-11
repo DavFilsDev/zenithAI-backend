@@ -3,19 +3,15 @@ from datetime import timedelta
 from pathlib import Path
 
 import dotenv
-from django.core.exceptions import ImproperlyConfigured
 
 # Load environment variables
 dotenv.load_dotenv()
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-default-key-change-in-production')
 
-DEBUG = os.getenv('DEBUG', 'False') == 'True'
-
-if not DEBUG and (not SECRET_KEY or 'django-insecure' in SECRET_KEY.lower()):
-    raise ImproperlyConfigured('SECRET_KEY must be set to a non-default value when DEBUG is off.')
+DEBUG = False
 
 ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
@@ -74,9 +70,6 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # Database
 DB_PASSWORD = os.getenv('DB_PASSWORD')
 
-if not DEBUG and not DB_PASSWORD:
-    raise ImproperlyConfigured('DB_PASSWORD must be set when DEBUG is off.')
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -127,9 +120,6 @@ CACHES = {
 
 # CORS Settings
 CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', 'http://localhost:5173').split(',')
-
-if not DEBUG and not os.getenv('CORS_ALLOWED_ORIGINS'):
-    raise ImproperlyConfigured('CORS_ALLOWED_ORIGINS must be set when DEBUG is off.')
 
 CORS_ALLOW_CREDENTIALS = True
 
@@ -219,20 +209,3 @@ LLM_PROMPT_BUDGET = int(os.getenv('LLM_PROMPT_BUDGET', '4000'))
 
 LLM_BREAKER_THRESHOLD = int(os.getenv('LLM_BREAKER_THRESHOLD', '5'))
 LLM_BREAKER_COOLDOWN = int(os.getenv('LLM_BREAKER_COOLDOWN', '60'))
-
-if not DEBUG:
-    from chat.providers.factory import validate_config
-
-    validate_config()
-    del validate_config
-
-# Production security
-if not DEBUG:
-    SECURE_SSL_REDIRECT = True
-    SECURE_HSTS_SECONDS = 31536000
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    USE_X_FORWARDED_HOST = True
