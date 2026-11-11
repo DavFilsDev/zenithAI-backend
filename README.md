@@ -6,8 +6,8 @@ Django REST Framework backend for Zenith AI: authentication, conversations, mess
 
 The product is **free and open to everyone**: no credits, no premium tier, no payment, and a target infrastructure cost of 0 €.
 
-- Frontend repository: `zenithAI_react-typescript-frontend`, served on `http://localhost:5173` in development
-- Backend: `http://localhost:8000` in development
+- Frontend repository: `zenithAI_react-typescript-frontend`, served on `http://localhost:5173` in development; production deployment pending
+- Backend: `http://localhost:8000` in development, <https://zenith-ai-backend-t45i.onrender.com> in production
 - Shared API contract: [`docs/API_CONTRACT.md`](docs/API_CONTRACT.md)
 
 ## Stack
@@ -67,7 +67,7 @@ The compose stack uses `backend.settings.development`; the image itself defaults
 | Variable | Purpose |
 |---|---|
 | `SECRET_KEY` | Django signing key |
-| `ALLOWED_HOSTS` | Comma-separated host list |
+| `ALLOWED_HOSTS` | Comma-separated host list; production appends `RENDER_EXTERNAL_HOSTNAME` at runtime |
 | `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT` | PostgreSQL connection when `DATABASE_URL` is not set |
 | `DATABASE_URL` | PostgreSQL URL; takes precedence over the `DB_*` variables, use the pooled Neon URL in production |
 | `DATABASE_URL_UNPOOLED` | Direct PostgreSQL URL used only for migrations when set |
@@ -79,7 +79,7 @@ The compose stack uses `backend.settings.development`; the image itself defaults
 
 `CORS_ALLOWED_ORIGINS`, `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_PROMPT_BUDGET`, `DAILY_MESSAGE_CAP` and the `LLM_FALLBACK_*` variables in `.env.example` are the configuration the shared contract requires in section 11. `CORS_ALLOWED_ORIGINS` is read from the environment in phase P0. The `LLM_*` names are the only LLM settings; the legacy `GEMINI_*` names were removed in P2.11.
 
-The frontend runs on `http://localhost:5173` and calls the backend directly, with no proxy, so that origin is the one that must be allowed.
+The frontend runs on `http://localhost:5173` in development and calls the backend directly, with no proxy, so that origin must be allowed locally. In production, set `CORS_ALLOWED_ORIGINS` to the exact deployed frontend origin; no trailing slash and no wildcard.
 
 Never commit `.env`. It is already ignored.
 
@@ -174,7 +174,25 @@ Every pull request and every push to `main` also runs `ruff`, `mypy` and the Ope
 
 ## Deployment (Render Free + Neon Free)
 
-The backend is configured to deploy from [`render.yaml`](render.yaml) to Render's Free web service plan, with PostgreSQL on Neon Free. The target combination costs 0 € and uses no payment method. Free tiers change without notice: re-check the limits before deploying.
+The backend is deployed from [`render.yaml`](render.yaml) to Render's Free web service plan, with PostgreSQL on Neon Free. The target combination costs 0 € and uses no payment method. Free tiers change without notice: re-check the limits before deploying.
+
+### Current deployment
+
+| Item | State |
+|---|---|
+| Backend | Live at <https://zenith-ai-backend-t45i.onrender.com> |
+| Platform | Render Free, Frankfurt, Docker |
+| Database | Neon Free, reachable through `/api/v1/health/` |
+| Frontend | Not deployed yet |
+| CORS | Waiting for the deployed frontend origin |
+| UptimeRobot | Pending |
+| Error monitoring | Pending |
+| Structured logging | Pending |
+| Quota admin counters | Pending |
+
+Verified on 2026-11-11: `/api/v1/health/live/`, `/api/v1/health/`, `/api/v1/docs/` and `/api/v1/schema/` returned `200`. The root path returns `404` because there is no root route; this is expected.
+
+Render may suffix the onrender hostname even when the Blueprint name is `zenith-ai-backend`; the current hostname is `zenith-ai-backend-t45i.onrender.com`. Do not hardcode the hostname. Production settings read `RENDER_EXTERNAL_HOSTNAME` at runtime and append it to `ALLOWED_HOSTS`, so the actual hostname is accepted without a wildcard.
 
 ### 1. Create the Neon database
 
@@ -192,36 +210,49 @@ Neon Free includes 100 compute hours per project per month. The liveness endpoin
    - Docker build from `./Dockerfile`
    - health check path `/api/v1/health/live/`
    - `autoDeployTrigger: checksPass`, so a red CI run does not deploy
-   - `ALLOWED_HOSTS` set from Render's `RENDER_EXTERNAL_HOSTNAME`
+   - `ALLOWED_HOSTS` seeded from Render's `RENDER_EXTERNAL_HOSTNAME`; production also appends the runtime value
    - a generated `SECRET_KEY`
 3. Fill the prompted secrets:
    - `DATABASE_URL` — Neon pooled URL
    - `DATABASE_URL_UNPOOLED` — Neon direct URL
    - `LLM_API_KEY` — Gemini API key
-   - `CORS_ALLOWED_ORIGINS` — comma-separated frontend origins, without a trailing slash
+   - `CORS_ALLOWED_ORIGINS` — comma-separated frontend origins, without a trailing slash. Add the deployed frontend origin after the frontend has a production URL.
 4. Keep the service on the **Free** plan and do not add a payment method. Render does not require one for Free web services; stop if the dashboard asks for a card.
-5. If the service name `zenith-ai-backend` is unavailable, change the Blueprint `name` and the self-reference under `ALLOWED_HOSTS` together.
-6. If you add a custom domain, replace the Blueprint `ALLOWED_HOSTS` self-reference with a literal comma-separated list containing both the `onrender.com` host and the custom domain.
+5. If the service name `zenith-ai-backend` is unavailable, change the Blueprint `name` and the self-reference under `ALLOWED_HOSTS` together. The runtime hostname handling still accepts the resulting onrender host.
+6. If you add a custom domain, add it explicitly to `ALLOWED_HOSTS`. The runtime append covers only the Render hostname.
 
 The entrypoint applies migrations and collects static files before gunicorn starts. Render's zero-downtime deploy keeps the previous instance serving until the new one passes its health check, so a failed migration does not replace a working deployment.
 
-### 3. Keep the service warm
+### 3. Deploy the frontend and enable CORS
 
-Render suspends a Free web service after 15 minutes without traffic. A Free UptimeRobot monitor every 5 minutes keeps it warm:
+The backend cannot be called from a browser frontend until that frontend's origin is allowed.
 
-- Monitor only `https://<service>.onrender.com/api/v1/health/live/`.
+1. Build the frontend with:
+   ```bash
+   VITE_API_URL=https://zenith-ai-backend-t45i.onrender.com/api/v1
+   ```
+2. Deploy the frontend to a free static host.
+3. Add the exact frontend origin to `CORS_ALLOWED_ORIGINS` in Render, for example `https://frontend.example`. Multiple origins are comma-separated; do not add a trailing slash or `*`.
+4. Restart or redeploy the backend so the new value is loaded.
+5. Register, log in and send one message from the frontend to verify CORS, JWT, Neon and the LLM key together.
+
+### 4. Keep the service warm
+
+Render suspends a Free web service after 15 minutes without traffic. Create a Free UptimeRobot monitor every 5 minutes to keep it warm:
+
+- Monitor only `https://zenith-ai-backend-t45i.onrender.com/api/v1/health/live/`.
 - Use an HTTP(s) check with a 5-minute interval and at least one alert contact.
 - Never monitor `/api/v1/health/`: it queries Neon and defeats database scale-to-zero.
 - A warm service consumes about 744 instance hours per month, below the 750-hour Free allowance. Neon still sleeps when no API request needs it.
 
 Free instances can restart at any time, are limited to 0.1 CPU / 512 MB, and include 5 GB of outbound bandwidth and 500 build-pipeline minutes per month. Render may also suspend a Free service that initiates an unusually high volume of outbound traffic, including database and provider calls. If you exceed bandwidth or pipeline minutes without a payment method, Render suspends Free services or new builds until the next month instead of billing you. This is intentional under the zero-cost rule.
 
-### 4. Verify the deployment
+### 5. Verify the deployment
 
 ```bash
-curl -i https://<service>.onrender.com/api/v1/health/live/
-curl -i https://<service>.onrender.com/api/v1/health/
-curl -I https://<service>.onrender.com/api/v1/docs/
+curl -i https://zenith-ai-backend-t45i.onrender.com/api/v1/health/live/
+curl -i https://zenith-ai-backend-t45i.onrender.com/api/v1/health/
+curl -I https://zenith-ai-backend-t45i.onrender.com/api/v1/docs/
 ```
 
 The first endpoint must return `200` without touching Neon. The second may take longer on the first request because it wakes Neon. The third confirms static files and WhiteNoise are working.
@@ -242,10 +273,16 @@ Implemented today:
 - Health check, shared error envelope, Swagger UI, ReDoc and OpenAPI schema
 - All endpoints under the versioned base path `/api/v1`
 - A pytest suite with factory-boy fixtures and an enforced 85% coverage floor
+- Backend deployment on Render Free with Neon Free, runtime host allowlisting and verified health checks
 
 Planned, in the order of the roadmap:
 
-- CI, containers, and deployment on free hosting with a free PostgreSQL database
+- Deploy the frontend, then add its exact origin to `CORS_ALLOWED_ORIGINS`
+- Configure the UptimeRobot liveness monitor
+- Add free error monitoring
+- Add structured logging with a request identifier
+- Expose quota and limit counters in the admin
+- Add a custom domain only if it remains free
 
 Full detail, with effort, acceptance criteria and dependencies:
 
