@@ -1,6 +1,14 @@
 from django.urls import reverse
 
+from backend.settings.base import parse_allowed_hosts
 from backend.settings.database import database_config
+
+
+def test_parse_allowed_hosts_ignores_empty_values_and_whitespace():
+    assert parse_allowed_hosts(' app.onrender.com, ,localhost ') == [
+        'app.onrender.com',
+        'localhost',
+    ]
 
 
 def test_database_config_reads_a_pooled_neon_url():
