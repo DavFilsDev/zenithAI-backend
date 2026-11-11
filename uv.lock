@@ -597,6 +597,19 @@ wheels = [
 ]
 
 [[package]]
+name = "dj-database-url"
+version = "2.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "django" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/98/9f/fc9905758256af4f68a55da94ab78a13e7775074edfdcaddd757d4921686/dj_database_url-2.3.0.tar.gz", hash = "sha256:ae52e8e634186b57e5a45e445da5dc407a819c2ceed8a53d1fac004cc5288787", size = 10980, upload-time = "2024-10-23T10:05:19.953Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e5/91/641a4e5c8903ed59f6cbcce571003bba9c5d2f731759c31db0ba83bb0bdb/dj_database_url-2.3.0-py3-none-any.whl", hash = "sha256:bb0d414ba0ac5cd62773ec7f86f8cc378a9dbb00a80884c2fc08cc570452521e", size = 7793, upload-time = "2024-10-23T10:05:41.254Z" },
+]
+
+[[package]]
 name = "django"
 version = "5.2.19"
 source = { registry = "https://pypi.org/simple" }
@@ -2067,10 +2080,20 @@ wheels = [
 ]
 
 [[package]]
+name = "whitenoise"
+version = "6.12.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/cb/2a/55b3f3a4ec326cd077c1c3defeee656b9298372a69229134d930151acd01/whitenoise-6.12.0.tar.gz", hash = "sha256:f723ebb76a112e98816ff80fcea0a6c9b8ecde835f8ddda25df7a30a3c2db6ad", size = 26841, upload-time = "2026-02-27T00:05:42.028Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/db/eb/d5583a11486211f3ebd4b385545ae787f32363d453c19fffd81106c9c138/whitenoise-6.12.0-py3-none-any.whl", hash = "sha256:fc5e8c572e33ebf24795b47b6a7da8da3c00cff2349f5b04c02f28d0cc5a3cc2", size = 20302, upload-time = "2026-02-27T00:05:40.086Z" },
+]
+
+[[package]]
 name = "zenith-ai-backend"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "dj-database-url" },
     { name = "django" },
     { name = "django-cors-headers" },
     { name = "djangorestframework" },
@@ -2081,6 +2104,7 @@ dependencies = [
     { name = "openai" },
     { name = "psycopg", extra = ["binary"] },
     { name = "python-dotenv" },
+    { name = "whitenoise" },
 ]
 
 [package.dev-dependencies]
@@ -2098,6 +2122,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "dj-database-url", specifier = ">=2.3,<3.0" },
     { name = "django", specifier = ">=5.2,<6.0" },
     { name = "django-cors-headers", specifier = ">=4.9,<5.0" },
     { name = "djangorestframework", specifier = ">=3.16,<4.0" },
@@ -2108,6 +2133,7 @@ requires-dist = [
     { name = "openai", specifier = ">=2.21,<3.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.1,<4.0" },
     { name = "python-dotenv", specifier = ">=1.2,<2.0" },
+    { name = "whitenoise", specifier = ">=6.9,<7.0" },
 ]
 
 [package.metadata.requires-dev]
