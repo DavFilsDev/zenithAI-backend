@@ -64,7 +64,7 @@ Inside an app, business logic never lives in a view:
 | `selectors.py` | Read queries, always filtered by the current user |
 | `permissions.py` | Reusable permission classes |
 
-The current `chat/services.py` already follows this split for the LLM part. `selectors.py` does not exist yet, see P3 in the improvement plan.
+`chat/selectors.py` owns the conversation and message read queries and is the only place where ownership is filtered; `chat/services.py` owns the reply use cases.
 
 ### Serializers
 

@@ -1,16 +1,15 @@
 from .models import Message
 from .providers import Provider
 from .providers.factory import build_provider
+from .selectors import messages_for
 
 provider: Provider = build_provider()
 
 
 def _history_for(conversation, exclude_message_id):
-    messages = Message.objects.filter(conversation=conversation).order_by('created_at')
     return [
         {'role': msg.role, 'content': msg.content}
-        for msg in messages
-        if msg.id != exclude_message_id
+        for msg in messages_for(conversation, exclude_id=exclude_message_id)
     ]
 
 

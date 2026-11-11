@@ -124,7 +124,7 @@ Conversation and message ids are UUID strings, list endpoints are paginated with
 ```
 backend/     settings package (base, development, production, test) and root URLconf
 users/       custom user model, registration, profile
-chat/        conversations, messages, and the provider-backed LLM service (chat/providers/)
+chat/        conversations, messages, selectors, services and the provider-backed LLM (chat/providers/)
 docs/        contract, conventions, improvement plan, API documentation
 CHANGELOG.md API and behavior changes, versioning per the contract
 manage.py

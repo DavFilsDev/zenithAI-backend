@@ -24,8 +24,6 @@ def seconds_until_midnight():
 
 
 class DailyQuotaThrottle(BaseThrottle):
-    """Cap the total number of messages sent per day across all users."""
-
     def allow_request(self, request, view):
         cap = getattr(settings, 'DAILY_MESSAGE_CAP', 500)
         if DailyQuota.try_consume(cap):
