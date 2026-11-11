@@ -11,11 +11,16 @@ dotenv.load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
+
+def parse_allowed_hosts(value: str) -> list[str]:
+    return [host.strip() for host in value.split(',') if host.strip()]
+
+
 SECRET_KEY = os.getenv('SECRET_KEY', 'django-insecure-default-key-change-in-production')
 
 DEBUG = False
 
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+ALLOWED_HOSTS = parse_allowed_hosts(os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1'))
 
 INSTALLED_APPS = [
     'django.contrib.admin',

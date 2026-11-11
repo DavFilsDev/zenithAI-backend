@@ -8,6 +8,10 @@ from .base import *  # noqa: F401,F403
 
 DEBUG = False
 
+render_hostname = os.getenv('RENDER_EXTERNAL_HOSTNAME', '').strip()
+if render_hostname and render_hostname not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(render_hostname)
+
 MIDDLEWARE.insert(2, 'whitenoise.middleware.WhiteNoiseMiddleware')
 
 if not SECRET_KEY or 'django-insecure' in SECRET_KEY.lower():
