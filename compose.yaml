@@ -1,0 +1,48 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ${DB_NAME:-zenith_ai_db}
+      POSTGRES_USER: ${DB_USER:-zenith_ai}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+    image: zenith-ai-backend:local
+    environment:
+      DJANGO_SETTINGS_MODULE: backend.settings.development
+      SECRET_KEY: ${SECRET_KEY:-local-compose-secret}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      DB_NAME: ${DB_NAME:-zenith_ai_db}
+      DB_USER: ${DB_USER:-zenith_ai}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_HOST: db
+      DB_PORT: 5432
+      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-gemini-2.5-flash}
+      LLM_FALLBACK_PROVIDER: ${LLM_FALLBACK_PROVIDER:-}
+      LLM_FALLBACK_API_KEY: ${LLM_FALLBACK_API_KEY:-}
+      LLM_FALLBACK_MODEL: ${LLM_FALLBACK_MODEL:-}
+      LLM_PROMPT_BUDGET: ${LLM_PROMPT_BUDGET:-4000}
+      DAILY_MESSAGE_CAP: ${DAILY_MESSAGE_CAP:-500}
+      LLM_BREAKER_THRESHOLD: ${LLM_BREAKER_THRESHOLD:-5}
+      LLM_BREAKER_COOLDOWN: ${LLM_BREAKER_COOLDOWN:-60}
+    command: sh -c "python manage.py migrate --noinput && exec gunicorn backend.wsgi:application --bind 0.0.0.0:8000 --workers 3 --access-logfile - --error-logfile -"
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
