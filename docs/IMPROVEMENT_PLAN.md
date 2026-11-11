@@ -244,15 +244,15 @@ Effort: **S** under half a day, **M** one to three days, **L** more than three d
 
 ### P5 — Free deployment and free observability
 
-- [ ] **P5.1** Deploy the backend on Koyeb. — *M* — the service is reachable on HTTPS, the health check is wired, and the bill stays at zero. — Depends on: P4.4, P0.15.
-- [ ] **P5.2** Attach a Neon free PostgreSQL database. — *M* — the pooled connection string is configured, migrations run on it, and the plan is not exceeded. — Depends on: P1.1, P3.8.
+- [ ] **P5.1** Deploy the backend on Render Free. — *M* — the service is reachable on HTTPS, `/api/v1/health/live/` is the Render health check, the service stays on the Free plan, and no card is added. — Depends on: P4.4, P0.15.
+- [ ] **P5.2** Attach a Neon free PostgreSQL database. — *M* — the Frankfurt project uses the pooled URL at runtime and the direct URL for migrations, and the 100 compute-hour plan is not exceeded. — Depends on: P1.1, P3.8.
 - [ ] **P5.3** Generate and store the production configuration. — *S* — a strong `SECRET_KEY` is generated, `DEBUG=False`, `ALLOWED_HOSTS` lists the deployed host only, and no secret is committed. — Depends on: P0.10, P0.11.
-- [ ] **P5.4** Automate the release. — *M* — a push to the main branch migrates and restarts, and a failed migration leaves the previous version serving. — Depends on: P5.1, P5.2.
+- [ ] **P5.4** Automate the release. — *M* — a push to `main` deploys only after CI passes, the container migrates and restarts, and a failed migration leaves the previous version serving. — Depends on: P5.1, P5.2.
 - [ ] **P5.5** Configure free error monitoring. — *S* — provider and server errors are reported to a free tier service, with the environment and the route attached, and personal data excluded. — Depends on: P5.1.
-- [ ] **P5.6** Configure an uptime check. — *S* — the health endpoint is polled from outside, and an alert fires on failure. — Depends on: P1.5.
+- [ ] **P5.6** Configure an uptime check. — *S* — UptimeRobot polls `/api/v1/health/live/` every 5 minutes, the readiness endpoint is never monitored, and an alert fires on failure. — Depends on: P1.5.
 - [ ] **P5.7** Add structured logging with a request identifier. — *S* — each request logs one line with an id, the user id when authenticated, the route and the duration, and the format is machine-readable. — Depends on: P5.5.
 - [ ] **P5.8** Expose quota and limit counters in the admin. — *M* — the global daily counter, the per-user usage and the provider 429 ratio are visible without a database query, so a quota overrun is noticed before users complain. — Depends on: P2.9.
-- [ ] **P5.9** Write the deployment runbook. — *M* — the README documents the exact steps to provision a free backend, a free database, the provider key and the environment variables, with no step that requires a paid resource. — Depends on: P5.1, P5.2.
+- [ ] **P5.9** Write the deployment runbook. — *M* — the README documents the exact Render, Neon, UptimeRobot and environment-variable steps, with no step that requires a paid resource. — Depends on: P5.1, P5.2.
 
 ## 4. Free LLM providers
 
@@ -270,19 +270,21 @@ Quota arithmetic for a 0 € service, to size the limits in P2.9: with Gemini Fl
 
 ## 5. Free hosting
 
-Verified on **2026-10-01**. Same caveat: re-check before deploying.
+Verified on **2026-11-11**. Same caveat: re-check before deploying.
 
 | Platform | Free offer | Known limits | Verdict |
 |---|---|---|---|
-| **Koyeb** | One free web service, 512 MB RAM, 0.1 vCPU, 2 GB SSD, never charged. 100 GB egress per month. | The free PostgreSQL is limited to about 5 hours of active time and 1 GB, so it cannot be used. 0.1 vCPU is tight: it rules out multiple worker processes, which reinforces assumption 7. Acquired by Mistral AI in February 2026, so the roadmap is a risk. | **Recommended backend** |
-| **Render** | Free web service with 750 instance hours per month, free static sites. | Spins down after 15 minutes of inactivity, cold start around 30 to 60 seconds. Ephemeral filesystem. The free PostgreSQL **expires 30 days after creation**, so it is only good for a prototype. | Fallback backend |
+| **Render** | One Free web service with 0.1 CPU, 512 MB RAM, 750 instance hours and 5 GB outbound bandwidth per month; free TLS, custom domains, health checks and Frankfurt. | Spins down after 15 minutes without traffic and takes about a minute to wake. Instances may restart at any time. The free PostgreSQL **expires 30 days after creation**, so it cannot be used. Free instances are not intended for production. | **Recommended backend**, kept warm by a 5-minute liveness monitor |
+| **Koyeb** | No usable free web service at the time of verification. | The dashboard only shows the Mistral relaunch state and provides no way to create a service; a second account behaves the same. The service is therefore unavailable regardless of the published plan. | **Excluded** |
 | **Neon** | 100 projects, 100 compute hours per project per month, 0.5 GB storage per project, 5 GB public transfer per month. | Compute scales to zero after 5 minutes, waking in a few hundred milliseconds, and that cannot be disabled. When the compute hours or the transfer run out, the compute is suspended until the next period. No overage is ever billed. | **Recommended database**, use the pooled connection string |
+| **Northflank** | Sandbox with 2 services, 2 jobs, 1 database and up to 20 $ of monthly resource usage on Northflank Cloud; always on, no sleeping, Dockerfile builds, Frankfurt. | A payment method is required to create resources, even on the free plan, and the tier is not intended for production. The card requirement violates the zero-cost rule. | **Excluded** |
 | **Supabase** | 500 MB database, 1 GB file storage, 5 GB bandwidth, two free projects. | A free project is paused after 7 days of low activity, with a 1-year restore window. | Fallback database |
-| **Fly.io** | None. | No free tier anymore, pay-as-you-go only, trial credits are temporary. The current README claims it as a free option, which is wrong. | **Excluded** |
+| **Google Cloud Run** | Request-based free tier, about 180 000 vCPU-seconds, 360 000 GiB-seconds and 2 million requests per month. | Requires a Google Cloud billing account and additional Cloud Build, Artifact Registry and networking setup; scales to zero with cold starts. | Excluded by the zero-cost rule |
+| **Fly.io** | None. | No free tier anymore, pay-as-you-go only, trial credits are temporary. | **Excluded** |
 
-Target combination, and what it costs: the backend on Koyeb, the database on Neon, the model provider on Gemini with Groq as fallback. 0 €.
+Target combination, and what it costs: the backend on Render Free, the database on Neon Free, the model provider on Gemini with Groq as fallback. 0 €.
 
-Two consequences of the free tier to design around, not to complain about: a request that wakes a sleeping service is slow, so the health check must be cheap and the LLM call must be the only slow part of a request; and a single small instance means no horizontal scaling, so in-process state such as the quota counter must survive a restart.
+Two consequences of the free tier to design around, not to complain about: a request that wakes a sleeping service is slow, so the health check must be cheap and the LLM call must be the only slow part of a request; and a single small instance means no horizontal scaling, so in-process state such as the quota counter must survive a restart. Keeping Render warm with a 5-minute liveness monitor consumes about 744 of the 750 monthly instance hours; the liveness endpoint never queries Neon, so the database still scales to zero.
 
 ## 6. Zero-cost rules
 
