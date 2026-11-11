@@ -27,10 +27,15 @@ RUN groupadd --system app && useradd --system --gid app --create-home app
 WORKDIR /app
 
 COPY --from=builder --chown=app:app /app /app
-RUN install -d -o app -g app /app/staticfiles
+RUN install -d -o app -g app /app/staticfiles \
+    && chmod 0755 /app/docker-entrypoint.sh
 
 USER app
 
 EXPOSE 8000
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8000/api/v1/health/', headers={'X-Forwarded-Proto': 'https'}), timeout=5)"
+
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["gunicorn", "backend.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "3", "--access-logfile", "-", "--error-logfile", "-"]

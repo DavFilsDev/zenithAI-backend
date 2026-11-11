@@ -56,6 +56,8 @@ uv run python manage.py createsuperuser
 
 `docker compose up --build` starts PostgreSQL and the API, applies the migrations and serves the API on `http://localhost:8000`. Set `APP_PORT` to publish a different port. The stack reads `.env` when present and otherwise uses local defaults; the database is kept in the `postgres_data` volume.
 
+The container entrypoint applies the migrations and collects the static files before it starts gunicorn. Docker marks the API healthy when `GET /api/v1/health/` succeeds; check it with `docker compose ps`.
+
 The compose stack uses `backend.settings.development`; the image itself defaults to `backend.settings.production`.
 
 ## Environment variables
