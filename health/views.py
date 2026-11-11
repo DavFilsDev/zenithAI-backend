@@ -15,6 +15,27 @@ class HealthSerializer(serializers.Serializer):
     database = serializers.CharField()
 
 
+class LivenessSerializer(serializers.Serializer):
+    status = serializers.CharField()
+
+
+class LivenessView(APIView):
+    permission_classes = (permissions.AllowAny,)
+    authentication_classes = ()
+
+    @extend_schema(
+        summary="Liveness check",
+        description="Public liveness probe that only confirms the process is serving requests. "
+        "It does not query the database, so platform health checks do not wake a suspended database.",
+        tags=['System'],
+        responses={
+            200: OpenApiResponse(response=LivenessSerializer(), description="The service is running"),
+        },
+    )
+    def get(self, request: Request) -> Response:
+        return Response({'status': 'ok'})
+
+
 class HealthView(APIView):
     permission_classes = (permissions.AllowAny,)
     authentication_classes = ()

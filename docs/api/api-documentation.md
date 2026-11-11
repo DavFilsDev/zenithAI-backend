@@ -303,7 +303,9 @@ The model call goes to the provider selected by `LLM_PROVIDER` (Gemini or Groq o
 
 After `LLM_BREAKER_THRESHOLD` consecutive failures (default 5) the circuit breaker opens: calls return the same `503 llm_unavailable` immediately, without contacting the provider, until `LLM_BREAKER_COOLDOWN` seconds (default 60) have passed. The next call then tries the provider again, and a success closes the circuit. This keeps a provider outage from turning every request into a long timeout.
 
-### Health check
+### Health checks
+
+`GET /api/v1/health/live/`, public, no authentication. Returns `200 OK` with `{"status": "ok"}` as soon as the process is serving requests. It does not query the database, so platform health checks do not keep a suspended database awake.
 
 `GET /api/v1/health/`, public, no authentication. Runs a `SELECT 1` against the database.
 
