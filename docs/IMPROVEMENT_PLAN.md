@@ -235,8 +235,8 @@ Effort: **S** under half a day, **M** one to three days, **L** more than three d
 
 ### P4 — Continuous integration and containers
 
-- [ ] **P4.1** Add the CI test workflow. — *M* — every push and pull request runs the full suite against a PostgreSQL service, and the workflow is required before merge. — Depends on: P3.4.
-- [ ] **P4.2** Add the CI lint and type-check workflow. — *S* — ruff, mypy and the schema validation run on every pull request. — Depends on: P3.2, P3.3.
+- [x] **P4.1** Add the CI test workflow. — *M* — every push and pull request runs the full suite against a PostgreSQL service, and the workflow is required before merge. — Depends on: P3.4. (`.github/workflows/tests.yml` runs the full pytest suite against a PostgreSQL 17 service on every push and pull request; the first `main` run passed. Require the `Test` check in branch protection to block a red merge.)
+- [x] **P4.2** Add the CI lint and type-check workflow. — *S* — ruff, mypy and the schema validation run on every pull request. — Depends on: P3.2, P3.3. (`.github/workflows/quality.yml` runs `ruff`, `mypy` and `manage.py spectacular --validate` on every pull request and push to `main`; all three pass locally.)
 - [ ] **P4.3** Add a schema drift check. — *S* — CI fails when the generated OpenAPI schema changes without a matching change in `docs/API_CONTRACT.md` or in the API documentation. — Depends on: P1.6, P3.7.
 - [ ] **P4.4** Write the Dockerfile. — *M* — the image runs as a non-root user, runs on a supported Python version, and starts with gunicorn or uvicorn. — Depends on: P3.1, P3.9.
 - [ ] **P4.5** Add a compose file with the application and PostgreSQL. — *S* — `docker compose up` gives a working local stack with migrations applied and no manual step. — Depends on: P4.4.
