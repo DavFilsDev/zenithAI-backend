@@ -52,6 +52,12 @@ The API is then available on `http://localhost:8000`, the admin on `http://local
 uv run python manage.py createsuperuser
 ```
 
+## Docker Compose
+
+`docker compose up --build` starts PostgreSQL and the API, applies the migrations and serves the API on `http://localhost:8000`. Set `APP_PORT` to publish a different port. The stack reads `.env` when present and otherwise uses local defaults; the database is kept in the `postgres_data` volume.
+
+The compose stack uses `backend.settings.development`; the image itself defaults to `backend.settings.production`.
+
 ## Environment variables
 
 `.env.example` lists every variable the project uses. The settings read today:
