@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: zenith-ai-backend
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/v1/health/live/
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: backend.settings.production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALLOWED_HOSTS
+        fromService:
+          name: zenith-ai-backend
+          type: web
+          envVarKey: RENDER_EXTERNAL_HOSTNAME
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_UNPOOLED
+        sync: false
+      - key: LLM_PROVIDER
+        value: gemini
+      - key: LLM_MODEL
+        value: gemini-2.5-flash
+      - key: LLM_API_KEY
+        sync: false
