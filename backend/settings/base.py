@@ -1,8 +1,11 @@
 import os
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
 import dotenv
+
+from .database import database_config
 
 dotenv.load_dotenv()
 
@@ -65,17 +68,22 @@ TEMPLATES = [
 WSGI_APPLICATION = 'backend.wsgi.application'
 
 DB_PASSWORD = os.getenv('DB_PASSWORD')
+DATABASE_URL = os.getenv('DATABASE_URL')
+DATABASES: dict[str, Any]
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'zenith_ai_db'),
-        'USER': os.getenv('DB_USER', 'manager_zenith_ai'),
-        'PASSWORD': DB_PASSWORD,
-        'HOST': os.getenv('DB_HOST', 'localhost'),
-        'PORT': os.getenv('DB_PORT', '5432'),
+if DATABASE_URL:
+    DATABASES = {'default': database_config(DATABASE_URL)}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.getenv('DB_NAME', 'zenith_ai_db'),
+            'USER': os.getenv('DB_USER', 'manager_zenith_ai'),
+            'PASSWORD': DB_PASSWORD,
+            'HOST': os.getenv('DB_HOST', 'localhost'),
+            'PORT': os.getenv('DB_PORT', '5432'),
+        }
     }
-}
 
 AUTH_PASSWORD_VALIDATORS = [
     {
