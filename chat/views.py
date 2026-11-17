@@ -8,6 +8,7 @@ from django.http import StreamingHttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
 from rest_framework import exceptions, generics, permissions, status
+from rest_framework.renderers import JSONRenderer
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import BaseSerializer
@@ -307,6 +308,13 @@ class MessageListCreateView(OwnedConversationMixin, generics.ListCreateAPIView):
 class MessageStreamView(OwnedConversationMixin, APIView):
     permission_classes = (permissions.IsAuthenticated,)
     throttle_classes = (MessageUserThrottle, MessageAnonThrottle, DailyQuotaThrottle)
+
+    def perform_content_negotiation(
+        self,
+        request: Request,
+        force: bool = False,
+    ) -> tuple[JSONRenderer, str]:
+        return JSONRenderer(), 'application/json'
 
     @extend_schema(
         summary="Stream a message in a conversation",
