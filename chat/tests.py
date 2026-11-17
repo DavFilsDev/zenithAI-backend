@@ -335,6 +335,28 @@ def test_stream_happy_path_emits_tokens_then_done_and_persists_once(mock_stream,
     assert conversation.messages.filter(role='assistant').count() == 1
 
 
+@patch('chat.services.provider.stream', return_value=iter(['Hel', 'lo']))
+def test_stream_accepts_event_stream_accept_header(
+    mock_stream,
+    auth_client,
+    conversation,
+):
+    response = auth_client.post(
+        stream_url(conversation),
+        {'message': 'Hi'},
+        HTTP_ACCEPT='text/event-stream',
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response['Content-Type'] == 'text/event-stream'
+
+    body = stream_body(response)
+    assert 'event: token' in body
+    assert 'event: done' in body
+    assert conversation.messages.filter(role='assistant').count() == 1
+    assert conversation.messages.get(role='assistant').content == 'Hello'
+
+
 @patch('chat.services.provider.stream', return_value=iter(['a', 'b', 'c']))
 def test_disconnect_mid_stream_leaves_no_assistant_row(mock_stream, conversation):
     state = {}
@@ -401,6 +423,52 @@ def test_stream_unauthenticated_request_returns_unauthorized(api_client, convers
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert response.data['error']['code'] == 'unauthorized'
+
+
+def test_stream_unauthenticated_with_event_stream_accept_returns_json_401(
+    api_client,
+    conversation,
+):
+    response = api_client.post(
+        stream_url(conversation),
+        {'message': 'Hi'},
+        HTTP_ACCEPT='text/event-stream',
+    )
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response['Content-Type'].startswith('application/json')
+    assert response.data['error']['code'] == 'unauthorized'
+
+
+def test_stream_missing_message_with_event_stream_accept_returns_json_400(
+    auth_client,
+    conversation,
+):
+    response = auth_client.post(
+        stream_url(conversation),
+        {},
+        HTTP_ACCEPT='text/event-stream',
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response['Content-Type'].startswith('application/json')
+    assert response.data['error']['code'] == 'validation_error'
+
+
+def test_stream_unknown_conversation_with_event_stream_accept_returns_json_404(
+    auth_client,
+):
+    response = auth_client.post(
+        reverse(
+            'chat_v1:conversation-messages-stream',
+            kwargs={'conversation_id': uuid4()},
+        ),
+        {'message': 'Hi'},
+        HTTP_ACCEPT='text/event-stream',
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response['Content-Type'].startswith('application/json')
 
 
 def test_scopes_use_the_configured_rates():
