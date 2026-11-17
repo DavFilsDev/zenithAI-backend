@@ -68,7 +68,7 @@ All list endpoints are paginated with the standard DRF envelope and a page size 
 ```json
 {
   "count": 42,
-  "next": "http://localhost:8000/api/v1/conversations/?page=2",
+  "next": "http://localhost:8000/api/v1/chat/conversations/?page=2",
   "previous": null,
   "results": []
 }
